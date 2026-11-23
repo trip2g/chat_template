@@ -16,6 +16,14 @@
 -->
 
 <script>
+  // CHAT API PREFIX – the one setting of this page.
+  // A same-origin proxy serves the Hermes Agent API server's /api/sessions…
+  // endpoints under this path, e.g. GET /_system/webchatproxy/api/sessions.
+  // Change it here if your proxy lives elsewhere. No trailing slash.
+  var WEBCHAT_API_PREFIX = '/_system/webchatproxy'
+</script>
+
+<script>
   // Theme before first paint, the same rule as the rest of the site: dark
   // unless the sign-in corner's toggle stored $mol_lights = "true".
   try {
@@ -128,11 +136,10 @@
 
 <div class="signin"><div mol_view_root="$trip2g_user_space"></div></div>
 
-<!-- Settings from the server. chat_api comes from the note's frontmatter. -->
+<!-- From the server: whether the visitor is the site admin. -->
 <script type="application/json" id="webchat-data">
   {{ json(map(
-    "isAdmin", currentUser.IsAdmin(),
-    "chatApi", note.M().GetString("chat_api", "/_system/webchatproxy")
+    "isAdmin", currentUser.IsAdmin()
   )) }}
 </script>
 
@@ -180,7 +187,7 @@
   'use strict'
 
   var DATA = JSON.parse(document.getElementById('webchat-data').textContent)
-  var CHAT_API = DATA.chatApi.replace(/\/$/, '')
+  var CHAT_API = WEBCHAT_API_PREFIX
 
   // Where uploaded files go. The folder's hidden note uploads/_files.md embeds
   // every uploaded file: trip2g stores a file only when a note refers to it.
@@ -303,8 +310,9 @@
 
   // ---------------------------------------------------------------------------
   // Chat API: the Hermes Agent API server, reached on this site at CHAT_API
-  // through a sign-in door. Without a door session every call answers 401;
-  // the door's sign-in page is CHAT_API/oauth2/start?rd=<path to come back to>.
+  // through an authenticating proxy. Without a proxy session every call
+  // answers 401; the proxy's sign-in page is CHAT_API/oauth2/start?rd=<path>
+  // (the oauth2-proxy convention).
   // Formats are Hermes' own: GET /api/sessions -> {data: [session]},
   // GET /api/sessions/{id}/messages -> {data: [message]},
   // POST /api/sessions/{id}/chat/stream -> server-sent events.
@@ -318,8 +326,8 @@
         err.signIn = true
         throw err
       }
-      // 403: the door refused a cross-site request; 502: the agent is down;
-      // 503: the sign-in service is down. None of them is fixed by signing in.
+      // 403: the proxy refused the request (e.g. cross-site); 502: the agent is down;
+      // 503: the proxy's sign-in backend is down. Signing in fixes none of them.
       if (res.status === 403 || res.status === 502 || res.status === 503) {
         throw new Error('The chat is not available right now (HTTP ' + res.status + '). Try again in a minute.')
       }
@@ -340,7 +348,7 @@
     return CHAT_API + '/oauth2/start?rd=' + encodeURIComponent(location.pathname)
   }
 
-  // An error line; for a missing door session, a sign-in button with it.
+  // An error line; for a missing proxy session, a sign-in button with it.
   function errorNode(err) {
     var node = el('div', { class: 'error' }, err.message)
     if (err.signIn) node.append(' ', el('a', { class: 'button primary', href: signInURL() }, 'Sign in'))

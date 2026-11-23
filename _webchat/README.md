@@ -14,7 +14,8 @@ markup, styles and a plain script, no build step. Edit it in place and sync.
 |---|---|
 | Colours, light and dark | the `:root` blocks at the top of `<style>` |
 | Three columns, phone tabs | `.app` grid and the `@media (max-width: 860px)` block |
-| Settings the server passes in | `<script type="application/json" id="webchat-data">` |
+| The chat API prefix | `WEBCHAT_API_PREFIX` in the first `<script>` |
+| Whether the visitor is the admin | `<script type="application/json" id="webchat-data">` |
 | Chat list, messages, sending | the section "Chat API" in the script |
 | Streaming reply | `readEvents` and the `handlers` table in `send` |
 | How a message is drawn | `renderMarkdown` / `renderInline` |
@@ -25,14 +26,11 @@ markup, styles and a plain script, no build step. Edit it in place and sync.
 
 ## How it talks to the server
 
-- **Chat**: the Hermes Agent API server, reached on this same site at the
-  address in `webchat.md` → `chat_api` (default `/_system/webchatproxy`),
-  behind a sign-in door: without a door session every call answers 401 and
-  the page shows a "Sign in" button that opens `<chat_api>/oauth2/start`.
-  403 (a request from another site), 502 (the agent is down) and 503 (the
-  sign-in service is down) show "try again" instead.
-  Formats are
-  Hermes' own: `GET /api/sessions`, `POST /api/sessions`,
+- **Chat**: the Hermes Agent API server, reached on this same site under
+  `WEBCHAT_API_PREFIX` (default `/_system/webchatproxy`) through an
+  authenticating proxy. A 401 shows a "Sign in" button that opens
+  `<prefix>/oauth2/start?rd=<this page>`; 403, 502 and 503 show "try again".
+  Formats are Hermes' own: `GET /api/sessions`, `POST /api/sessions`,
   `GET /api/sessions/{id}/messages`, `POST /api/sessions/{id}/chat/stream`
   (server-sent events `assistant.delta`, `tool.started`,
   `assistant.completed`, `run.completed`, `error`, `done`). Every chat is
@@ -76,7 +74,7 @@ same file in your own vault after sync.
 
 ## Reset
 
-Something broken? Run `webchatproxy layout` in your terminal. It puts the
-original `_layouts/webchat.html`, `webchat.md` and this README back, overwrites
-nothing else, and syncs. A changed `chat_api` in `webchat.md` goes back to the
-default. Your own copies, `_layouts/webchat-<name>.html`, are not touched.
+Something broken? Put the original three files back – `_layouts/webchat.html`,
+`webchat.md` and this README – from wherever this template was installed from,
+and sync. Nothing else is touched; a changed `WEBCHAT_API_PREFIX` goes back to
+the default. Keep your own variants as `_layouts/webchat-<name>.html`.
