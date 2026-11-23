@@ -4,15 +4,18 @@ A [trip2g](https://github.com/trip2g/trip2g) layout: a chat page for a
 [Hermes Agent](https://github.com/NousResearch/hermes-agent) API server, with a
 file explorer over the site's own stored files.
 
-![The chat page: chat sessions on the left, a streamed reply about an attached PDF in the middle, the file explorer with a PDF preview on the right](docs/screenshot.png)
+![The chat page: chats grouped by day on the left, a streamed reply about an attached PDF in the middle with a CSV waiting as a chip in the message box, the files drawer with a PDF preview on the right](docs/screenshot.png)
 
-- **Left** – chat sessions. **Middle** – the chat, with streaming replies.
-  **Right** – files: search, preview (image, video, audio, PDF, text), upload,
-  and "Attach to message", which puts the file's link and its vault path into
-  the message.
+- **Left** – chats, grouped by day, with the site's sign-in corner and theme
+  toggle at the foot. **Middle** – the conversation in one centred column,
+  with streaming replies and a rounded message box. **Right** – a files
+  drawer that folds away: search, preview (image, video, audio, PDF, text),
+  upload, and "Attach to message", which adds the file as a chip; on send the
+  file's link and its vault path go into the message.
 - One HTML file, plain JavaScript and CSS, no build step and no external
   scripts. You (or an agent) can edit it in place in the vault.
-- Light and dark, follows the site's theme toggle; one pane at a time on phones.
+- Light and dark, follows the site's theme toggle; on phones one pane at a
+  time – the menu opens the chats, the files button opens the files.
 
 ## Files
 
@@ -53,7 +56,7 @@ Server-sent events the page uses; every other event is ignored:
 | Event | `data` fields read | What the page does |
 |---|---|---|
 | `assistant.delta` | `delta` | appends the text to the reply |
-| `tool.started` | `tool_name` | shows "tool: name" above the reply |
+| `tool.started` | `tool_name` | shows the tool's name above the reply |
 | `assistant.completed` | `content` | replaces the reply with the final text |
 | `error` | `message` | shows the error under the reply |
 
@@ -94,8 +97,8 @@ page refuses, before sending, a file whose extension trip2g does not store as
 an asset, and a file over 10 MB (trip2g's default request limit). A name that
 is taken gets `-2`, `-3`, ….
 
-The sign-in button in the corner is trip2g's own
-(`defaultTemplate.UserSpaceScripts()`).
+The sign-in corner at the foot of the chat list is trip2g's own
+(`defaultTemplate.UserSpaceScripts()`); it also holds the theme toggle.
 
 ## Extend
 

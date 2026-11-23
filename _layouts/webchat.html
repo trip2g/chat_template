@@ -37,104 +37,204 @@
 <style>
   /* Colours. Change these to restyle the whole page. */
   :root, :root[data-theme="light"] {
-    --bg: #f7f7f8; --panel: #ffffff; --line: #e3e3e8; --text: #1d1d22;
-    --muted: #6b6b76; --accent: #2f6fed; --accent-text: #ffffff;
-    --user: #e9effd; --code: #f0f0f3; --danger: #c62828;
+    --side: #f7f7f7; --main: #ffffff; --raise: #ffffff; --hover: #ececec; --active: #e4e4e4;
+    --line: #e5e5e5; --text: #171717; --soft: #5d5d5d; --faint: #8a8a8a;
+    --bubble: #f2f2f2; --accent: #2563eb; --accent-soft: #eaf1ff; --danger: #c62828;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 6px 24px rgba(0, 0, 0, .06);
   }
   :root[data-theme="dark"] {
-    --bg: #17171b; --panel: #1f1f24; --line: #33333b; --text: #ececf1;
-    --muted: #9a9aa6; --accent: #6d9bff; --accent-text: #0d0d10;
-    --user: #263352; --code: #2a2a31; --danger: #ff6b6b;
+    --side: #171717; --main: #212121; --raise: #2a2a2a; --hover: #262626; --active: #303030;
+    --line: #2f2f2f; --text: #ececec; --soft: #b4b4b4; --faint: #8a8a8a;
+    --bubble: #2f2f2f; --accent: #7aa7ff; --accent-soft: #1f2a3f; --danger: #ff6b6b;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 28px rgba(0, 0, 0, .35);
   }
 
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   /* body.webchat, not body: the sign-in corner's stylesheet also colours body. */
-  html, body.webchat { margin: 0; height: 100%; background: var(--bg); color: var(--text);
-    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  html, body.webchat { margin: 0; height: 100%; background: var(--main); color: var(--text);
+    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased; }
   button, input, textarea { font: inherit; color: inherit; }
-  button { cursor: pointer; border: 1px solid var(--line); background: var(--panel);
-    border-radius: 8px; padding: 6px 10px; }
-  button.primary, a.button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
-  a.button { display: inline-block; border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; text-decoration: none; }
-  button:disabled { opacity: .5; cursor: default; }
-  input[type="search"], textarea { width: 100%; border: 1px solid var(--line); border-radius: 8px;
-    background: var(--panel); padding: 8px 10px; }
+  button { cursor: pointer; background: none; border: 0; padding: 0; }
+  button:disabled { opacity: .45; cursor: default; }
   a { color: var(--accent); }
+  .sprite { position: absolute; width: 0; height: 0; }
+  svg.i { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.7;
+    stroke-linecap: round; stroke-linejoin: round; }
+  .icon-btn { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; color: var(--soft); flex: none; }
+  .icon-btn:hover { background: var(--hover); color: var(--text); }
+  .icon-btn[aria-pressed="true"] { background: var(--active); color: var(--text); }
+  .muted { color: var(--faint); font-size: 13px; }
+  .error { color: var(--danger); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .notice { color: var(--soft); font-size: 14px; }
+  .notice a.button { display: flex; width: fit-content; margin-top: 8px; }
+  a.button { display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 10px;
+    border: 1px solid var(--line); text-decoration: none; font-size: 14px; font-weight: 500; color: var(--text); }
+  a.button.primary { background: var(--text); color: var(--main); border-color: var(--text); }
+  .only-phone { display: none !important; }
 
-  /* Three columns: sessions | chat | files. */
-  .app { display: grid; grid-template-columns: 260px 1fr 340px; height: 100vh; }
-  .pane { display: flex; flex-direction: column; min-height: 0; min-width: 0;
-    border-right: 1px solid var(--line); background: var(--panel); }
-  .pane:last-child { border-right: 0; }
-  .pane > header { display: flex; gap: 8px; align-items: center; padding: 10px 12px;
-    border-bottom: 1px solid var(--line); min-height: 52px; }
-  .pane > header h2 { font-size: 15px; margin: 0; flex: 1; }
+  /* Three columns: chats | chat | files drawer. The drawer folds away. */
+  .app { display: grid; grid-template-columns: 260px minmax(0, 1fr) 360px; height: 100vh; }
+  .app[data-drawer="closed"] { grid-template-columns: 260px minmax(0, 1fr); }
+  .app[data-drawer="closed"] .files { display: none; }
+  .pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
   .scroll { overflow-y: auto; flex: 1; min-height: 0; }
-  .muted { color: var(--muted); font-size: 13px; }
-  .error { color: var(--danger); font-size: 13px; padding: 8px 12px; white-space: pre-wrap; }
-  .signin { position: fixed; top: 8px; right: 12px; z-index: 20; }
-  /* Room for the sign-in corner, which sits over the Files header. */
-  .files > header { padding-right: 190px; }
 
-  /* Sessions. */
-  .session { display: block; width: 100%; text-align: left; border: 0; border-radius: 0;
-    border-bottom: 1px solid var(--line); background: none; padding: 10px 12px; }
-  .session.active { background: var(--user); }
-  .session .title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Chats. The trip2g sign-in corner (and its theme toggle) sits at the foot. */
+  .side { background: var(--side); padding: 10px; gap: 2px; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 4px 6px 10px; font-weight: 600; min-height: 46px; }
+  .brand .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mark { width: 26px; height: 26px; border-radius: 50%; background: var(--text); color: var(--main);
+    display: grid; place-items: center; flex: none; }
+  .mark svg.i { width: 15px; height: 15px; }
+  .nav-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 10px;
+    font-size: 14px; text-align: left; }
+  .nav-row:hover { background: var(--hover); }
+  .sessions { margin: 4px -4px 0; padding: 0 4px; }
+  .group { font-size: 12px; font-weight: 500; color: var(--faint); padding: 14px 10px 4px; }
+  .session { display: block; width: 100%; text-align: left; padding: 7px 10px; border-radius: 10px; font-size: 14px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .session:hover { background: var(--hover); }
+  .session.active { background: var(--active); font-weight: 500; }
+  .sessions .muted, .sessions .error, .sessions .notice { padding: 10px; }
+  .signin { border-top: 1px solid var(--line); padding: 8px 4px 0; min-height: 48px; }
 
   /* Chat. */
-  .chat { background: var(--bg); }
-  .messages { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-  .msg { max-width: 820px; width: 100%; margin: 0 auto; padding: 10px 14px; border-radius: 12px;
-    background: var(--panel); border: 1px solid var(--line); overflow-wrap: anywhere; }
-  .msg.user { background: var(--user); }
-  .msg .role { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
-  .msg p { margin: 0 0 8px; white-space: pre-wrap; }
+  .chat { background: var(--main); }
+  .top { display: flex; align-items: center; gap: 6px; height: 56px; padding: 0 12px 0 20px; flex: none; }
+  .top h1 { flex: 1; min-width: 0; margin: 0; font-size: 16px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .messages { max-width: 780px; margin: 0 auto; padding: 16px 24px 32px; display: flex; flex-direction: column; gap: 26px; }
+  .messages > .muted { text-align: center; padding-top: 18vh; font-size: 15px; }
+  .msg { overflow-wrap: anywhere; min-width: 0; }
+  .msg.user { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .msg.user .body { background: var(--bubble); padding: 10px 16px; border-radius: 20px; max-width: 85%; }
+  .msg.assistant .who { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .msg.assistant .tools, .msg.assistant .body, .msg.assistant > .error, .msg.assistant > .notice { margin-left: 36px; }
+  .msg p { margin: 0 0 10px; white-space: pre-wrap; }
+  .msg ul, .msg ol { margin: 0 0 10px; padding-left: 22px; }
+  .msg li { margin: 3px 0; }
   .msg p:last-child { margin-bottom: 0; }
-  .msg pre { background: var(--code); padding: 10px; border-radius: 8px; overflow-x: auto; margin: 0 0 8px; }
-  .msg code { background: var(--code); padding: 1px 4px; border-radius: 4px; font-size: 13px; }
+  .msg pre { background: var(--bubble); padding: 12px 14px; border-radius: 12px; overflow-x: auto; margin: 0 0 10px; font-size: 13px; }
+  code { font: 13px ui-monospace, "SF Mono", Menlo, Consolas, monospace; background: var(--bubble); padding: 2px 6px; border-radius: 6px; }
   .msg pre code { padding: 0; background: none; }
-  .msg img { max-width: 100%; border-radius: 8px; }
-  .tool { font-size: 12px; color: var(--muted); }
-  .composer { padding: 12px 16px; border-top: 1px solid var(--line); background: var(--panel); }
-  .composer form { max-width: 820px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end; }
-  .composer textarea { resize: vertical; min-height: 44px; max-height: 40vh; }
+  .msg img { max-width: 100%; border-radius: 12px; }
+  .tools:empty { display: none; }
+  .tool { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--soft); margin-bottom: 6px; }
+  .tool svg.i { width: 15px; height: 15px; color: var(--faint); }
+  .att { display: inline-flex; align-items: center; gap: 10px; padding: 8px 14px 8px 8px; max-width: 85%;
+    border: 1px solid var(--line); border-radius: 14px; background: var(--raise); color: var(--text); text-decoration: none; }
+  .att b { display: block; font-size: 14px; font-weight: 500; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .att .what { min-width: 0; }
+  .att .sub { display: block; font-size: 12px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* File type badges. */
+  .ft { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; flex: none;
+    font-size: 9px; font-weight: 700; letter-spacing: .02em; color: #fff; background: #6e6e6e; }
+  .ft-pdf { background: #e5484d; } .ft-img { background: #8e4ec6; } .ft-media { background: #0d74ce; }
+  .ft-text { background: #30a46c; }
+  .ft.long { font-size: 7.5px; letter-spacing: 0; }
+  .chip .ft.long { font-size: 6.5px; }
+
+  .composer { padding: 0 24px 14px; flex: none; }
+  .box { max-width: 780px; margin: 0 auto; background: var(--raise); border: 1px solid var(--line); border-radius: 24px;
+    box-shadow: var(--shadow); padding: 8px 8px 8px 14px; }
+  .box:focus-within { border-color: color-mix(in srgb, var(--text) 25%, var(--line)); }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; padding: 2px 0 6px; }
+  .chip { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 4px 4px 4px 4px; border-radius: 10px;
+    background: var(--bubble); font-size: 13px; }
+  .chip .ft { width: 24px; height: 24px; border-radius: 6px; font-size: 7.5px; }
+  .chip .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .chip button { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; color: var(--faint); flex: none; }
+  .chip button:hover { background: var(--hover); color: var(--text); }
+  .chip svg.i { width: 14px; height: 14px; }
+  .box textarea { display: block; width: 100%; border: 0; outline: 0; resize: none; background: none; padding: 6px 2px;
+    min-height: 36px; max-height: 40vh; line-height: 1.5; }
+  .box textarea::placeholder { color: var(--faint); }
+  .row { display: flex; align-items: center; gap: 4px; }
+  .row .spacer { flex: 1; }
+  .send { width: 36px; height: 36px; border-radius: 50%; background: var(--text); color: var(--main); display: grid; place-items: center; }
+  .hint { text-align: center; font-size: 12px; color: var(--faint); margin-top: 8px; }
 
   /* Files. */
-  .files-tools { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;
-    border-bottom: 1px solid var(--line); }
-  .drop { border: 2px dashed var(--line); border-radius: 8px; padding: 10px; text-align: center; }
-  .drop.over { border-color: var(--accent); }
-  .file { display: block; width: 100%; text-align: left; border: 0; border-radius: 0;
-    border-bottom: 1px solid var(--line); background: none; padding: 8px 12px; }
-  .file.active { background: var(--user); }
-  .file .name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .preview { border-top: 1px solid var(--line); padding: 10px 12px; max-height: 50%; overflow-y: auto; }
-  .preview img, .preview video { max-width: 100%; max-height: 260px; display: block; margin: 6px 0; }
-  .preview iframe { width: 100%; height: 300px; border: 1px solid var(--line); border-radius: 6px; }
-  .preview pre { background: var(--code); padding: 8px; border-radius: 6px; max-height: 260px;
-    overflow: auto; font-size: 12px; white-space: pre-wrap; }
-  .preview .actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-  .pager { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; }
+  .files { background: var(--side); border-left: 1px solid var(--line); }
+  .files > header { display: flex; align-items: center; gap: 8px; height: 56px; padding: 0 10px 0 18px; flex: none; }
+  .files h2 { font-size: 15px; font-weight: 600; margin: 0; flex: 1; }
+  .files h2 small { font-size: 13px; font-weight: 400; color: var(--faint); margin-left: 6px; }
+  .files-tools { padding: 0 14px 6px; display: flex; flex-direction: column; gap: 8px; }
+  .search { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; border-radius: 12px;
+    background: var(--raise); border: 1px solid var(--line); color: var(--faint); }
+  .search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--text); font-size: 14px; }
+  .drop { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 9px; border: 1.5px dashed var(--line);
+    border-radius: 12px; font-size: 13px; color: var(--soft); cursor: pointer; }
+  .drop u { color: var(--text); text-underline-offset: 3px; }
+  .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  #file-list { padding: 4px 8px; }
+  #file-list > .muted, #file-list > .error { padding: 10px; }
+  .file { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 7px 10px; border-radius: 12px; }
+  .file:hover { background: var(--hover); }
+  .file.active { background: var(--accent-soft); }
+  .file > span:last-child { min-width: 0; }
+  .file .name { display: block; font-size: 14px; font-weight: 500; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file .muted { display: block; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pager { display: flex; justify-content: space-between; align-items: center; padding: 4px 14px; }
+  .pager:empty { display: none; }
+  .pager button { height: 30px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--line); font-size: 13px; }
+  .preview { border-top: 1px solid var(--line); padding: 14px; max-height: 58%; overflow-y: auto; flex: none; }
+  .preview strong { display: block; font-size: 14px; overflow-wrap: anywhere; }
+  .preview .path { font-size: 12px; color: var(--faint); overflow-wrap: anywhere; margin-bottom: 10px; }
+  .preview img, .preview video { display: block; max-width: 100%; max-height: 240px; margin: 0 auto 10px; border-radius: 10px; }
+  .preview audio { width: 100%; margin-bottom: 10px; }
+  .preview iframe { display: block; width: 100%; height: 260px; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; background: #fff; }
+  .preview pre { background: var(--raise); border: 1px solid var(--line); padding: 10px 12px; border-radius: 10px; max-height: 240px;
+    overflow: auto; font-size: 12px; white-space: pre-wrap; margin: 0 0 10px; }
+  .preview .meta { font-size: 12px; color: var(--faint); margin-bottom: 10px; overflow-wrap: anywhere; }
+  .actions { display: flex; gap: 8px; }
+  .actions .btn { flex: 1; white-space: nowrap; padding: 0 14px; height: 38px; border-radius: 12px; border: 1px solid var(--line); font-size: 14px; font-weight: 500;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px; color: var(--text); text-decoration: none; }
+  .actions .btn.primary { background: var(--text); color: var(--main); border-color: var(--text); }
 
-  /* Phones: one pane at a time, switched by the tab bar. */
-  .tabs { display: none; }
+  @media (max-width: 1180px) {
+    .app { grid-template-columns: 230px minmax(0, 1fr) 320px; }
+    .app[data-drawer="closed"] { grid-template-columns: 230px minmax(0, 1fr); }
+  }
+
+  /* Phones: one pane at a time – the menu opens chats, the files button opens files. */
   @media (max-width: 860px) {
-    .app { grid-template-columns: 1fr; height: calc(100vh - 48px); }
-    .pane { display: none; border-right: 0; }
-    .app[data-tab="sessions"] .sessions, .app[data-tab="chat"] .chat,
-    .app[data-tab="files"] .files { display: flex; }
-    .tabs { display: flex; height: 48px; border-top: 1px solid var(--line); background: var(--panel); }
-    .tabs button { flex: 1; border: 0; border-radius: 0; background: none; }
-    .tabs button.active { color: var(--accent); font-weight: 600; }
-    .signin { top: auto; bottom: 56px; }
-    .files > header { padding-right: 12px; }
+    .app, .app[data-drawer="closed"] { grid-template-columns: minmax(0, 1fr); }
+    .pane { display: none; }
+    .app[data-tab="sessions"] .side, .app[data-tab="chat"] .chat,
+    .app[data-tab="files"] .files, .app[data-drawer="closed"][data-tab="files"] .files { display: flex; }
+    .only-phone { display: grid !important; }
+    .files { border-left: 0; }
+    .top { padding: 0 6px; }
+    .top h1 { text-align: center; }
+    .messages { padding: 8px 16px 24px; gap: 22px; }
+    .msg.assistant .tools, .msg.assistant .body, .msg.assistant > .error, .msg.assistant > .notice { margin-left: 0; }
+    .msg.user .body, .att { max-width: 92%; }
+    .composer { padding: 0 10px 10px; }
+    .hint { display: none; }
+    .preview { max-height: 50%; }
   }
 </style>
 </head>
 <body class="webchat">
 
-<div class="signin"><div mol_view_root="$trip2g_user_space"></div></div>
+<svg class="sprite" aria-hidden="true">
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-files" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M15 4v16"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 20h16"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><path d="m21 11-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7"/></symbol>
+  <symbol id="i-tool" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0 5 5L21 13l-8 8-3-3 6-6-1.3-1.3a4 4 0 0 1-5-5L11 4l3.7 2.3Z"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></symbol>
+</svg>
 
 <!-- From the server: whether the visitor is the site admin. -->
 <script type="application/json" id="webchat-data">
@@ -144,28 +244,48 @@
 </script>
 
 <div class="app" id="app" data-tab="chat">
-  <section class="pane sessions">
-    <header><h2>Chats</h2><button class="primary" id="new-chat">New chat</button></header>
-    <div class="scroll" id="session-list"></div>
-  </section>
+  <aside class="pane side">
+    <div class="brand">
+      <span class="mark"><svg class="i"><use href="#i-spark"/></svg></span>
+      <span class="name" id="brand-name"></span>
+      <button class="icon-btn only-phone" id="close-sessions" title="Back to the chat"><svg class="i"><use href="#i-x"/></svg></button>
+    </div>
+    <button class="nav-row" id="new-chat"><svg class="i"><use href="#i-edit"/></svg>New chat</button>
+    <div class="scroll sessions" id="session-list"></div>
+    <div class="signin"><div mol_view_root="$trip2g_user_space"></div></div>
+  </aside>
 
-  <section class="pane chat">
-    <header><h2 id="chat-title">Chat</h2></header>
+  <main class="pane chat">
+    <header class="top">
+      <button class="icon-btn only-phone" id="open-sessions" title="Chats"><svg class="i"><use href="#i-menu"/></svg></button>
+      <h1 id="chat-title">Chat</h1>
+      <button class="icon-btn only-phone" id="new-chat-top" title="New chat"><svg class="i"><use href="#i-edit"/></svg></button>
+      <button class="icon-btn" id="toggle-files" title="Files"><svg class="i"><use href="#i-files"/></svg></button>
+    </header>
     <div class="scroll"><div class="messages" id="messages"></div></div>
     <div class="composer">
-      <form id="composer">
-        <textarea id="input" rows="2" placeholder="Message. Enter sends, Shift+Enter is a new line."></textarea>
-        <button class="primary" id="send" type="submit">Send</button>
+      <form class="box" id="composer">
+        <div class="chips" id="chips" hidden></div>
+        <textarea id="input" rows="1" placeholder="Message"></textarea>
+        <div class="row">
+          <button class="icon-btn" id="pick-file" type="button" title="Attach a file"><svg class="i"><use href="#i-plus"/></svg></button>
+          <span class="spacer"></span>
+          <button class="send" id="send" type="submit" title="Send"><svg class="i"><use href="#i-up"/></svg></button>
+        </div>
       </form>
+      <div class="hint">Enter sends · Shift+Enter is a new line</div>
     </div>
-  </section>
+  </main>
 
-  <section class="pane files">
-    <header><h2>Files</h2><span class="muted" id="file-count"></span></header>
+  <aside class="pane files">
+    <header>
+      <h2>Files<small id="file-count"></small></h2>
+      <button class="icon-btn" id="close-files" title="Close files"><svg class="i"><use href="#i-x"/></svg></button>
+    </header>
     <div class="files-tools">
-      <input type="search" id="file-search" placeholder="Search files by name or folder">
+      <label class="search"><svg class="i"><use href="#i-search"/></svg><input type="search" id="file-search" placeholder="Search files by name or folder"></label>
       <label class="drop" id="drop">
-        Drop a file here or <u>choose one</u>
+        <svg class="i"><use href="#i-upload"/></svg>Drop a file or <u>choose one</u>
         <input type="file" id="file-input" hidden>
       </label>
       <div class="muted" id="upload-status"></div>
@@ -173,14 +293,8 @@
     <div class="scroll" id="file-list"></div>
     <div class="pager" id="pager"></div>
     <div class="preview" id="preview" hidden></div>
-  </section>
+  </aside>
 </div>
-
-<nav class="tabs" id="tabs">
-  <button data-tab="sessions">Chats</button>
-  <button data-tab="chat" class="active">Chat</button>
-  <button data-tab="files">Files</button>
-</nav>
 
 <script>
 (function () {
@@ -205,6 +319,9 @@
   var FILES_PER_PAGE = 50
   var TEXT_PREVIEW_BYTES = 200 * 1024
 
+  // Whether the files drawer is open on a wide screen, remembered per browser.
+  var DRAWER_KEY = 'webchat.drawer'
+
   var $ = function (id) { return document.getElementById(id) }
 
   // Small DOM helper: el('p', {class: 'x'}, 'text', childNode). Text is always
@@ -224,6 +341,17 @@
     return node
   }
 
+  // An icon from the sprite at the top of <body>.
+  function icon(name) {
+    var ns = 'http://www.w3.org/2000/svg'
+    var svg = document.createElementNS(ns, 'svg')
+    svg.setAttribute('class', 'i')
+    var use = document.createElementNS(ns, 'use')
+    use.setAttribute('href', '#i-' + name)
+    svg.append(use)
+    return svg
+  }
+
   function formatSize(bytes) {
     if (bytes < 1024) return bytes + ' B'
     if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB'
@@ -233,6 +361,27 @@
   function formatTime(seconds) {
     if (!seconds) return ''
     return new Date(seconds * 1000).toLocaleString()
+  }
+
+  // The badge colour of a file: pdf, img, media, text or other.
+  function fileKind(contentType, name) {
+    var type = contentType || ''
+    if (type === 'application/pdf') return 'pdf'
+    if (type.startsWith('image/')) return 'img'
+    if (type.startsWith('video/') || type.startsWith('audio/') || /\.(mp4|webm|mov|m4v|mkv)$/i.test(name)) return 'media'
+    if (type.startsWith('text/') || type.includes('json')) return 'text'
+    return 'other'
+  }
+
+  function fileBadge(name, contentType) {
+    var dot = name.lastIndexOf('.')
+    var ext = dot > 0 ? name.slice(dot + 1, dot + 5).toUpperCase() : 'FILE'
+    return el('span', { class: 'ft ft-' + fileKind(contentType, name) + (ext.length > 3 ? ' long' : '') }, ext)
+  }
+
+  function folderOf(absolutePath) {
+    var cut = absolutePath.lastIndexOf('/')
+    return cut > 0 ? absolutePath.slice(1, cut) : '/'
   }
 
   // ---------------------------------------------------------------------------
@@ -280,6 +429,17 @@
     return nodes
   }
 
+  // A paragraph whose every line is "- x", "* x" or "1. x" is a list.
+  function listNode(lines) {
+    var items = lines.split('\n')
+    var bullet = /^[-*] /
+    var number = /^\d+[.)] /
+    var kind = items.every(function (l) { return bullet.test(l) }) ? 'ul'
+      : items.every(function (l) { return number.test(l) }) ? 'ol' : null
+    if (!kind) return null
+    return el(kind, null, items.map(function (l) { return el('li', null, renderInline(l.replace(kind === 'ul' ? bullet : number, ''))) }))
+  }
+
   function renderMarkdown(text) {
     var out = document.createDocumentFragment()
     var blocks = String(text).split(/^```[^\n]*\n?/m)
@@ -289,7 +449,9 @@
         return
       }
       block.split(/\n{2,}/).forEach(function (para) {
-        if (para.trim()) out.append(el('p', null, renderInline(para.replace(/^\n+|\n+$/g, ''))))
+        var lines = para.replace(/^\n+|\n+$/g, '')
+        if (!lines.trim()) return
+        out.append(listNode(lines) || el('p', null, renderInline(lines)))
       })
     })
     return out
@@ -342,7 +504,7 @@
     return chatFetch(path, options).then(function (res) { return res.json() })
   }
 
-  var state = { sessionId: null, sending: false, titles: {} }
+  var state = { sessionId: null, sending: false, titles: {}, attachments: [] }
 
   function signInURL() {
     return CHAT_API + '/oauth2/start?rd=' + encodeURIComponent(location.pathname)
@@ -350,7 +512,7 @@
 
   // An error line; for a missing proxy session, a sign-in button with it.
   function errorNode(err) {
-    var node = el('div', { class: 'error' }, err.message)
+    var node = el('div', { class: err.signIn ? 'notice' : 'error' }, err.message)
     if (err.signIn) node.append(' ', el('a', { class: 'button primary', href: signInURL() }, 'Sign in'))
     return node
   }
@@ -359,29 +521,74 @@
     $('messages').append(errorNode(err))
   }
 
+  // Chats are grouped by when they were last active.
+  function sessionGroup(seconds) {
+    var now = new Date()
+    var today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+    var then = (seconds || 0) * 1000
+    if (then >= today) return 'Today'
+    if (then >= today - 6 * 24 * 3600 * 1000) return 'Previous 7 days'
+    return 'Earlier'
+  }
+
+  // A chat that began with an attached file shows the file's name, not its link;
+  // one with nothing said yet is a New chat.
+  function sessionLabel(s) {
+    return (s.title || s.preview || 'New chat').replace(/\[file: ([^\]\n]*)\](\(\S*\)?)?/g, '$1')
+  }
+
   function loadSessions() {
     var list = $('session-list')
     return chatJSON('/api/sessions?limit=100').then(function (body) {
       list.replaceChildren()
-      if (!body.data.length) list.append(el('div', { class: 'muted', style: 'padding:12px' }, 'No chats yet.'))
+      if (!body.data.length) list.append(el('div', { class: 'muted' }, 'No chats yet.'))
+      var group = null
       body.data.forEach(function (s) {
-        var label = s.title || s.preview || s.id
+        var label = sessionLabel(s)
+        var when = s.last_active || s.started_at
         state.titles[s.id] = label
         if (s.id === state.sessionId) $('chat-title').textContent = label
+        if (sessionGroup(when) !== group) {
+          group = sessionGroup(when)
+          list.append(el('div', { class: 'group' }, group))
+        }
         list.append(el('button', {
           class: 'session' + (s.id === state.sessionId ? ' active' : ''),
+          title: label + '\n' + (s.source || '') + ' · ' + formatTime(when),
           onclick: function () { location.hash = encodeURIComponent(s.id); setTab('chat') },
-        }, el('span', { class: 'title' }, label), el('span', { class: 'muted' }, (s.source || '') + ' · ' + formatTime(s.last_active || s.started_at))))
+        }, label))
       })
     }).catch(function (err) {
       list.replaceChildren(errorNode(err))
     })
   }
 
+  // A file attached to a message (see attachmentText) is drawn as a card.
+  var ATTACHMENT = /\[file: ([^\]\n]*)\]\((\S+?)\)\n\(trip2g vault file ([^\n]*)\)\n?/g
+
+  function attachmentCard(name, url, details) {
+    var parts = details.split(', ')
+    var href = safeHref(url)
+    var sub = folderOf(parts[0]) + (parts[2] ? ' · ' + parts[2] : '')
+    return el(href ? 'a' : 'div', { class: 'att', href: href, target: href ? '_blank' : null, rel: href ? 'noopener' : null, title: parts[0] },
+      fileBadge(name, parts[1]), el('span', { class: 'what' }, el('b', null, name), el('span', { class: 'sub' }, sub)))
+  }
+
   function messageNode(role, text) {
     var body = el('div', { class: 'body' })
+    if (role === 'user') {
+      var cards = []
+      var rest = String(text).replace(ATTACHMENT, function (match, name, url, details) {
+        cards.push(attachmentCard(name, url, details))
+        return ''
+      }).trim()
+      if (rest) body.append(renderMarkdown(rest))
+      return el('div', { class: 'msg user' }, cards, rest ? body : null)
+    }
     body.append(renderMarkdown(text))
-    return el('div', { class: 'msg ' + role }, el('div', { class: 'role' }, role), body)
+    return el('div', { class: 'msg assistant' },
+      el('div', { class: 'who' }, el('span', { class: 'mark' }, icon('spark')), 'Assistant'),
+      el('div', { class: 'tools' }), body)
   }
 
   function loadMessages() {
@@ -442,22 +649,32 @@
     return pump()
   }
 
-  function send(text) {
-    if (state.sending || !text.trim()) return
+  // The message as sent: the typed text, then one block per attached file.
+  function composedMessage() {
+    var parts = [$('input').value.trim()].concat(state.attachments.map(attachmentText))
+    return parts.filter(Boolean).join('\n')
+  }
+
+  function send() {
+    var text = composedMessage()
+    if (state.sending || !text) return
     if (!state.sessionId) {
-      newChat().then(function () { if (state.sessionId) send(text) })
+      newChat().then(function () { if (state.sessionId) send() })
       return
     }
     state.sending = true
     $('send').disabled = true
     $('input').value = ''
+    fitInput()
+    state.attachments = []
+    renderChips()
 
     var box = $('messages')
+    if (box.firstChild && box.firstChild.classList.contains('muted')) box.replaceChildren()
     box.append(messageNode('user', text))
     var reply = messageNode('assistant', '')
     var body = reply.querySelector('.body')
-    var tools = el('div', { class: 'tool' })
-    reply.insertBefore(tools, body)
+    var tools = reply.querySelector('.tools')
     box.append(reply)
     scrollToEnd()
 
@@ -468,7 +685,7 @@
     // run.completed, error, done. Anything else is ignored.
     var handlers = {
       'assistant.delta': function (e) { answer += e.delta || ''; redraw() },
-      'tool.started': function (e) { tools.append(el('div', null, 'tool: ' + (e.tool_name || '?'))) },
+      'tool.started': function (e) { tools.append(el('div', { class: 'tool' }, icon('tool'), el('code', null, e.tool_name || '?'))) },
       'assistant.completed': function (e) { if (typeof e.content === 'string' && e.content) answer = e.content; redraw() },
       'error': function (e) { reply.append(el('div', { class: 'error' }, e.message || 'error')) },
     }
@@ -486,6 +703,13 @@
       $('send').disabled = false
       loadSessions()
     })
+  }
+
+  // The message box grows with its text, up to 40% of the screen.
+  function fitInput() {
+    var input = $('input')
+    input.style.height = 'auto'
+    input.style.height = input.scrollHeight + 'px'
   }
 
   // ---------------------------------------------------------------------------
@@ -534,26 +758,29 @@
 
   function loadFiles() {
     if (!DATA.isAdmin) {
-      $('file-list').replaceChildren(el('div', { class: 'muted', style: 'padding:12px' },
-        'Files are for the site admin. Sign in with the button in the corner.'))
+      $('file-list').replaceChildren(el('div', { class: 'muted' },
+        'Files are for the site admin. Sign in with the button under the chat list.'))
       $('drop').hidden = true
       $('file-search').disabled = true
+      $('pick-file').hidden = true
       return Promise.resolve()
     }
     var filter = { search: files.search || null, limit: FILES_PER_PAGE, offset: files.offset }
     return graphql(LIST_FILES, { filter: filter }).then(function (data) {
       var result = data.admin.allLatestNoteAssets
       files.total = result.totalCount
-      $('file-count').textContent = result.totalCount + (result.totalCount === 1 ? ' file' : ' files')
+      $('file-count').textContent = result.totalCount
       var list = $('file-list')
       list.replaceChildren()
-      if (!result.nodes.length) list.append(el('div', { class: 'muted', style: 'padding:12px' }, 'No files.'))
+      if (!result.nodes.length) list.append(el('div', { class: 'muted' }, 'No files.'))
       result.nodes.forEach(function (asset) {
         list.append(el('button', {
-          class: 'file' + (files.selected && files.selected.id === asset.id ? ' active' : ''),
+          class: 'file' + (files.selected && files.selected.absolutePath === asset.absolutePath ? ' active' : ''),
+          title: asset.absolutePath,
           onclick: function () { files.selected = asset; showPreview(asset); loadFiles() },
-        }, el('span', { class: 'name' }, asset.absolutePath),
-          el('span', { class: 'muted' }, asset.contentType + ' · ' + formatSize(asset.size))))
+        }, fileBadge(asset.fileName, asset.contentType),
+          el('span', null, el('span', { class: 'name' }, asset.fileName),
+            el('span', { class: 'muted' }, folderOf(asset.absolutePath) + ' · ' + formatSize(asset.size)))))
       })
       renderPager()
     }).catch(function (err) {
@@ -580,8 +807,7 @@
   function showPreview(asset) {
     var box = $('preview')
     box.hidden = false
-    box.replaceChildren(el('strong', null, asset.fileName),
-      el('div', { class: 'muted' }, asset.absolutePath + ' · ' + asset.contentType + ' · ' + formatSize(asset.size)))
+    box.replaceChildren(el('strong', null, asset.fileName), el('div', { class: 'path' }, asset.absolutePath))
 
     // The type comes from the server's MIME table, which differs between hosts
     // (.webm is audio/webm on some), so video is also recognised by extension.
@@ -600,14 +826,13 @@
         .catch(function (err) { pre.textContent = err.message })
     }
 
-    if (asset.notes.length) {
-      box.append(el('div', { class: 'muted' }, 'Used in: ',
-        asset.notes.map(function (n, i) { return [i ? ', ' : '', el('a', { href: n.url, target: '_blank' }, n.path)] })))
-    }
+    box.append(el('div', { class: 'meta' }, asset.contentType + ' · ' + formatSize(asset.size),
+      asset.notes.length ? ' · Used in ' : null,
+      asset.notes.map(function (n, i) { return [i ? ', ' : '', el('a', { href: n.url, target: '_blank' }, n.path)] })))
 
     box.append(el('div', { class: 'actions' },
-      el('button', { class: 'primary', onclick: function () { attach(asset) } }, 'Attach to message'),
-      el('a', { href: asset.url, target: '_blank', download: asset.fileName }, 'Download')))
+      el('button', { class: 'btn primary', onclick: function () { attach(asset) } }, icon('clip'), 'Attach to message'),
+      el('a', { class: 'btn', href: asset.url, target: '_blank', download: asset.fileName }, icon('download'), 'Download')))
   }
 
   // What the agent reads: a link it can fetch and where the file sits in the
@@ -619,14 +844,29 @@
       (used ? ', referenced by ' + used : '') + ')'
   }
 
+  // Attached files wait as chips above the message box until it is sent.
   function attach(asset) {
-    var input = $('input')
-    var before = input.value.slice(0, input.selectionStart)
-    var after = input.value.slice(input.selectionEnd)
-    var block = (before && !before.endsWith('\n') ? '\n' : '') + attachmentText(asset) + '\n'
-    input.value = before + block + after
-    input.focus()
+    if (!state.attachments.some(function (a) { return a.absolutePath === asset.absolutePath })) state.attachments.push(asset)
+    renderChips()
     setTab('chat')
+    $('input').focus()
+  }
+
+  function renderChips() {
+    var chips = $('chips')
+    chips.hidden = !state.attachments.length
+    chips.replaceChildren(...state.attachments.map(function (asset) {
+      return el('span', { class: 'chip', title: asset.absolutePath },
+        fileBadge(asset.fileName, asset.contentType), el('span', { class: 'name' }, asset.fileName),
+        el('button', {
+          type: 'button',
+          title: 'Remove ' + asset.fileName,
+          onclick: function () {
+            state.attachments = state.attachments.filter(function (a) { return a !== asset })
+            renderChips()
+          },
+        }, icon('x')))
+    }))
   }
 
   // ---------------------------------------------------------------------------
@@ -711,12 +951,25 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Wiring.
+  // Wiring. Wide screens show chats, chat and the files drawer side by side;
+  // phones show one of them, named by data-tab on #app.
   // ---------------------------------------------------------------------------
+
+  var PHONE = window.matchMedia('(max-width: 860px)')
 
   function setTab(tab) {
     $('app').dataset.tab = tab
-    document.querySelectorAll('#tabs button').forEach(function (b) { b.classList.toggle('active', b.dataset.tab === tab) })
+  }
+
+  function setDrawer(open) {
+    $('app').dataset.drawer = open ? 'open' : 'closed'
+    $('toggle-files').setAttribute('aria-pressed', String(open))
+    try { localStorage.setItem(DRAWER_KEY, open ? 'open' : 'closed') } catch (e) {}
+  }
+
+  function showFiles() {
+    if (PHONE.matches) setTab('files')
+    else setDrawer(true)
   }
 
   function openFromHash() {
@@ -725,11 +978,28 @@
     loadSessions()
   }
 
-  $('tabs').addEventListener('click', function (e) { if (e.target.dataset.tab) setTab(e.target.dataset.tab) })
+  var drawerStored = null
+  try { drawerStored = localStorage.getItem(DRAWER_KEY) } catch (e) {}
+  setDrawer(drawerStored !== 'closed')
+  $('brand-name').textContent = document.title
+
   $('new-chat').addEventListener('click', newChat)
-  $('composer').addEventListener('submit', function (e) { e.preventDefault(); send($('input').value) })
+  $('new-chat-top').addEventListener('click', newChat)
+  $('open-sessions').addEventListener('click', function () { setTab('sessions') })
+  $('close-sessions').addEventListener('click', function () { setTab('chat') })
+  $('toggle-files').addEventListener('click', function () {
+    if (PHONE.matches) setTab('files')
+    else setDrawer($('app').dataset.drawer === 'closed')
+  })
+  $('close-files').addEventListener('click', function () {
+    if (PHONE.matches) setTab('chat')
+    else setDrawer(false)
+  })
+  $('pick-file').addEventListener('click', function () { showFiles(); $('file-search').focus() })
+  $('composer').addEventListener('submit', function (e) { e.preventDefault(); send() })
+  $('input').addEventListener('input', fitInput)
   $('input').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send($('input').value) }
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send() }
   })
 
   var searchTimer
