@@ -46,7 +46,8 @@
   button, input, textarea { font: inherit; color: inherit; }
   button { cursor: pointer; border: 1px solid var(--line); background: var(--panel);
     border-radius: 8px; padding: 6px 10px; }
-  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  button.primary, a.button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  a.button { display: inline-block; border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; text-decoration: none; }
   button:disabled { opacity: .5; cursor: default; }
   input[type="search"], textarea { width: 100%; border: 1px solid var(--line); border-radius: 8px;
     background: var(--panel); padding: 8px 10px; }
@@ -131,7 +132,7 @@
 <script type="application/json" id="webchat-data">
   {{ json(map(
     "isAdmin", currentUser.IsAdmin(),
-    "chatApi", note.M().GetString("chat_api", "/_system/chatapi")
+    "chatApi", note.M().GetString("chat_api", "/_system/webchatproxy")
   )) }}
 </script>
 
@@ -301,7 +302,9 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Chat API: the Hermes Agent API server, reached on this site at CHAT_API.
+  // Chat API: the Hermes Agent API server, reached on this site at CHAT_API
+  // through a sign-in door. Without a door session every call answers 401;
+  // the door's sign-in page is CHAT_API/oauth2/start?rd=<path to come back to>.
   // Formats are Hermes' own: GET /api/sessions -> {data: [session]},
   // GET /api/sessions/{id}/messages -> {data: [message]},
   // POST /api/sessions/{id}/chat/stream -> server-sent events.
@@ -311,7 +314,9 @@
     return fetch(CHAT_API + path, Object.assign({ credentials: 'same-origin' }, options)).then(function (res) {
       var type = res.headers.get('Content-Type') || ''
       if (res.status === 401 || res.status === 403 || res.redirected || (res.ok && type.includes('text/html'))) {
-        throw new Error('The chat needs you to sign in (HTTP ' + res.status + '). Reload the page after signing in.')
+        var err = new Error('Sign in to the chat to see and send messages.')
+        err.signIn = true
+        throw err
       }
       if (!res.ok) {
         return res.text().then(function (body) { throw new Error('Chat API ' + res.status + ': ' + body.slice(0, 300)) })
@@ -326,8 +331,19 @@
 
   var state = { sessionId: null, sending: false, titles: {} }
 
-  function showChatError(message) {
-    $('messages').append(el('div', { class: 'error' }, message))
+  function signInURL() {
+    return CHAT_API + '/oauth2/start?rd=' + encodeURIComponent(location.pathname)
+  }
+
+  // An error line; for a missing door session, a sign-in button with it.
+  function errorNode(err) {
+    var node = el('div', { class: 'error' }, err.message)
+    if (err.signIn) node.append(' ', el('a', { class: 'button primary', href: signInURL() }, 'Sign in'))
+    return node
+  }
+
+  function showChatError(err) {
+    $('messages').append(errorNode(err))
   }
 
   function loadSessions() {
@@ -345,7 +361,7 @@
         }, el('span', { class: 'title' }, label), el('span', { class: 'muted' }, (s.source || '') + ' · ' + formatTime(s.last_active || s.started_at))))
       })
     }).catch(function (err) {
-      list.replaceChildren(el('div', { class: 'error' }, err.message))
+      list.replaceChildren(errorNode(err))
     })
   }
 
@@ -371,7 +387,7 @@
         if (text.trim()) box.append(messageNode(m.role, text))
       })
       scrollToEnd()
-    }).catch(function (err) { showChatError(err.message) })
+    }).catch(function (err) { showChatError(err) })
   }
 
   function scrollToEnd() {
@@ -388,7 +404,7 @@
       location.hash = encodeURIComponent(body.session.id)
       setTab('chat')
       return loadSessions()
-    }).catch(function (err) { showChatError(err.message) })
+    }).catch(function (err) { showChatError(err) })
   }
 
   // Reads a server-sent event stream from a fetch response and calls
@@ -451,7 +467,7 @@
     }).then(function (res) {
       return readEvents(res, function (name, data) { if (handlers[name]) handlers[name](data) })
     }).catch(function (err) {
-      reply.append(el('div', { class: 'error' }, err.message))
+      reply.append(errorNode(err))
     }).finally(function () {
       state.sending = false
       $('send').disabled = false

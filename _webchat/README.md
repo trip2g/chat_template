@@ -4,7 +4,7 @@ title: webchat template
 
 # webchat – notes for the agent that maintains this page
 
-The chat page is the note `chat.md` (address `/chat`) drawn by the layout
+The chat page is the note `webchat.md` (address `/webchat`) drawn by the layout
 `_layouts/webchat.html`. Everything the page does is in that one HTML file:
 markup, styles and a plain script, no build step. Edit it in place and sync.
 
@@ -26,7 +26,10 @@ markup, styles and a plain script, no build step. Edit it in place and sync.
 ## How it talks to the server
 
 - **Chat**: the Hermes Agent API server, reached on this same site at the
-  address in `chat.md` → `chat_api` (default `/_system/chatapi`). Formats are
+  address in `webchat.md` → `chat_api` (default `/_system/webchatproxy`),
+  behind a sign-in door: without a door session every call answers 401 and
+  the page shows a "Sign in" button that opens `<chat_api>/oauth2/start`.
+  Formats are
   Hermes' own: `GET /api/sessions`, `POST /api/sessions`,
   `GET /api/sessions/{id}/messages`, `POST /api/sessions/{id}/chat/stream`
   (server-sent events `assistant.delta`, `tool.started`,
@@ -71,12 +74,7 @@ same file in your own vault after sync.
 
 ## Reset
 
-Something broken? Put the original files back (overwrites
-`_layouts/webchat.html`, `chat.md` and this README, nothing else):
-
-```
-curl -L -o /tmp/webchat.zip https://github.com/trip2g/chat_template/releases/latest/download/webchat.zip
-unzip -o /tmp/webchat.zip -d <vault root>
-```
-
-A changed `chat_api` in `chat.md` goes back to the default.
+Something broken? Use your web chat layout tool to install the layout again.
+It puts back the original `_layouts/webchat.html`, `webchat.md` and this
+README, and touches nothing else. A changed `chat_api` in `webchat.md` goes
+back to the default. Copy anything you want to keep out of the layout first.

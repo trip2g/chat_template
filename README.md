@@ -25,7 +25,7 @@ This writes three files and nothing else:
 | File | What it is |
 |---|---|
 | `_layouts/webchat.html` | the whole page |
-| `chat.md` | the page itself, at `/chat` (`layout: webchat`) |
+| `webchat.md` | the page itself, at `/webchat` (`layout: webchat`) |
 | `_webchat/README.md` | notes for whoever edits the page: where each part lives, the rules that keep it working |
 
 Sync the vault. Running the same two commands again resets the page.
@@ -33,7 +33,7 @@ Sync the vault. Running the same two commands again resets the page.
 ## What it needs
 
 - **The chat** calls a Hermes Agent API server on the same site, at the path in
-  `chat.md` → `chat_api` (default `/_system/chatapi`). Put a reverse proxy
+  `webchat.md` → `chat_api` (default `/_system/webchatproxy`). Put a reverse proxy
   there that authenticates the visitor and forwards `/api/sessions…` to the
   Hermes API server. The page sends no credentials of its own.
 - **The files** use trip2g's admin GraphQL with the signed-in admin's session:
