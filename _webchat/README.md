@@ -74,7 +74,7 @@ same file in your own vault after sync.
 
 ## Reset
 
-Something broken? Use your web chat layout tool to install the layout again.
-It puts back the original `_layouts/webchat.html`, `webchat.md` and this
-README, and touches nothing else. A changed `chat_api` in `webchat.md` goes
-back to the default. Copy anything you want to keep out of the layout first.
+Something broken? Run `webchatproxy layout` in your terminal. It puts the
+original `_layouts/webchat.html`, `webchat.md` and this README back, overwrites
+nothing else, and syncs. A changed `chat_api` in `webchat.md` goes back to the
+default. Your own copies, `_layouts/webchat-<name>.html`, are not touched.
