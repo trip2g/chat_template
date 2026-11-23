@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }}</title>
+
+<!--
+  webchat – a chat page for a Hermes Agent API server, with a file explorer
+  over this site's assets. One file: markup, styles and a vanilla script.
+  Read _webchat/README.md before changing it.
+
+  Jet (the template engine) parses this WHOLE file, the script included.
+  Never write two opening curly braces in a row, or an opening curly brace
+  followed by a star, anywhere below the data block: the page stops rendering.
+-->
+
+<script>
+  // CHAT API PREFIX – the one setting of this page.
+  // A same-origin proxy serves the Hermes Agent API server's /api/sessions…
+  // endpoints under this path, e.g. GET /_system/webchatproxy/api/sessions.
+  // Change it here if your proxy lives elsewhere. No trailing slash.
+  var WEBCHAT_API_PREFIX = '/_system/webchatproxy'
+</script>
+
+<script>
+  // Theme before first paint, the same rule as the rest of the site: dark
+  // unless the sign-in corner's toggle stored $mol_lights = "true".
+  try {
+    var dark = localStorage.getItem('$mol_lights') !== 'true'
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
+  } catch (e) {}
+</script>
+
+{{ defaultTemplate.UserSpaceScripts() }}
+
+<style>
+  /* Colours. Change these to restyle the whole page. */
+  :root, :root[data-theme="light"] {
+    --bg: #f7f7f8; --panel: #ffffff; --line: #e3e3e8; --text: #1d1d22;
+    --muted: #6b6b76; --accent: #2f6fed; --accent-text: #ffffff;
+    --user: #e9effd; --code: #f0f0f3; --danger: #c62828;
+  }
+  :root[data-theme="dark"] {
+    --bg: #17171b; --panel: #1f1f24; --line: #33333b; --text: #ececf1;
+    --muted: #9a9aa6; --accent: #6d9bff; --accent-text: #0d0d10;
+    --user: #263352; --code: #2a2a31; --danger: #ff6b6b;
+  }
+
+  * { box-sizing: border-box; }
+  /* body.webchat, not body: the sign-in corner's stylesheet also colours body. */
+  html, body.webchat { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  button, input, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; border: 1px solid var(--line); background: var(--panel);
+    border-radius: 8px; padding: 6px 10px; }
+  button.primary, a.button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  a.button { display: inline-block; border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; text-decoration: none; }
+  button:disabled { opacity: .5; cursor: default; }
+  input[type="search"], textarea { width: 100%; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--panel); padding: 8px 10px; }
+  a { color: var(--accent); }
+
+  /* Three columns: sessions | chat | files. */
+  .app { display: grid; grid-template-columns: 260px 1fr 340px; height: 100vh; }
+  .pane { display: flex; flex-direction: column; min-height: 0; min-width: 0;
+    border-right: 1px solid var(--line); background: var(--panel); }
+  .pane:last-child { border-right: 0; }
+  .pane > header { display: flex; gap: 8px; align-items: center; padding: 10px 12px;
+    border-bottom: 1px solid var(--line); min-height: 52px; }
+  .pane > header h2 { font-size: 15px; margin: 0; flex: 1; }
+  .scroll { overflow-y: auto; flex: 1; min-height: 0; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .error { color: var(--danger); font-size: 13px; padding: 8px 12px; white-space: pre-wrap; }
+  .signin { position: fixed; top: 8px; right: 12px; z-index: 20; }
+  /* Room for the sign-in corner, which sits over the Files header. */
+  .files > header { padding-right: 190px; }
+
+  /* Sessions. */
+  .session { display: block; width: 100%; text-align: left; border: 0; border-radius: 0;
+    border-bottom: 1px solid var(--line); background: none; padding: 10px 12px; }
+  .session.active { background: var(--user); }
+  .session .title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Chat. */
+  .chat { background: var(--bg); }
+  .messages { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 820px; width: 100%; margin: 0 auto; padding: 10px 14px; border-radius: 12px;
+    background: var(--panel); border: 1px solid var(--line); overflow-wrap: anywhere; }
+  .msg.user { background: var(--user); }
+  .msg .role { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .msg p { margin: 0 0 8px; white-space: pre-wrap; }
+  .msg p:last-child { margin-bottom: 0; }
+  .msg pre { background: var(--code); padding: 10px; border-radius: 8px; overflow-x: auto; margin: 0 0 8px; }
+  .msg code { background: var(--code); padding: 1px 4px; border-radius: 4px; font-size: 13px; }
+  .msg pre code { padding: 0; background: none; }
+  .msg img { max-width: 100%; border-radius: 8px; }
+  .tool { font-size: 12px; color: var(--muted); }
+  .composer { padding: 12px 16px; border-top: 1px solid var(--line); background: var(--panel); }
+  .composer form { max-width: 820px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end; }
+  .composer textarea { resize: vertical; min-height: 44px; max-height: 40vh; }
+
+  /* Files. */
+  .files-tools { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;
+    border-bottom: 1px solid var(--line); }
+  .drop { border: 2px dashed var(--line); border-radius: 8px; padding: 10px; text-align: center; }
+  .drop.over { border-color: var(--accent); }
+  .file { display: block; width: 100%; text-align: left; border: 0; border-radius: 0;
+    border-bottom: 1px solid var(--line); background: none; padding: 8px 12px; }
+  .file.active { background: var(--user); }
+  .file .name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .preview { border-top: 1px solid var(--line); padding: 10px 12px; max-height: 50%; overflow-y: auto; }
+  .preview img, .preview video { max-width: 100%; max-height: 260px; display: block; margin: 6px 0; }
+  .preview iframe { width: 100%; height: 300px; border: 1px solid var(--line); border-radius: 6px; }
+  .preview pre { background: var(--code); padding: 8px; border-radius: 6px; max-height: 260px;
+    overflow: auto; font-size: 12px; white-space: pre-wrap; }
+  .preview .actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .pager { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; }
+
+  /* Phones: one pane at a time, switched by the tab bar. */
+  .tabs { display: none; }
+  @media (max-width: 860px) {
+    .app { grid-template-columns: 1fr; height: calc(100vh - 48px); }
+    .pane { display: none; border-right: 0; }
+    .app[data-tab="sessions"] .sessions, .app[data-tab="chat"] .chat,
+    .app[data-tab="files"] .files { display: flex; }
+    .tabs { display: flex; height: 48px; border-top: 1px solid var(--line); background: var(--panel); }
+    .tabs button { flex: 1; border: 0; border-radius: 0; background: none; }
+    .tabs button.active { color: var(--accent); font-weight: 600; }
+    .signin { top: auto; bottom: 56px; }
+    .files > header { padding-right: 12px; }
+  }
+</style>
+</head>
+<body class="webchat">
+
+<div class="signin"><div mol_view_root="$trip2g_user_space"></div></div>
+
+<!-- From the server: whether the visitor is the site admin. -->
+<script type="application/json" id="webchat-data">
+  {{ json(map(
+    "isAdmin", currentUser.IsAdmin()
+  )) }}
+</script>
+
+<div class="app" id="app" data-tab="chat">
+  <section class="pane sessions">
+    <header><h2>Chats</h2><button class="primary" id="new-chat">New chat</button></header>
+    <div class="scroll" id="session-list"></div>
+  </section>
+
+  <section class="pane chat">
+    <header><h2 id="chat-title">Chat</h2></header>
+    <div class="scroll"><div class="messages" id="messages"></div></div>
+    <div class="composer">
+      <form id="composer">
+        <textarea id="input" rows="2" placeholder="Message. Enter sends, Shift+Enter is a new line."></textarea>
+        <button class="primary" id="send" type="submit">Send</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="pane files">
+    <header><h2>Files</h2><span class="muted" id="file-count"></span></header>
+    <div class="files-tools">
+      <input type="search" id="file-search" placeholder="Search files by name or folder">
+      <label class="drop" id="drop">
+        Drop a file here or <u>choose one</u>
+        <input type="file" id="file-input" hidden>
+      </label>
+      <div class="muted" id="upload-status"></div>
+    </div>
+    <div class="scroll" id="file-list"></div>
+    <div class="pager" id="pager"></div>
+    <div class="preview" id="preview" hidden></div>
+  </section>
+</div>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="sessions">Chats</button>
+  <button data-tab="chat" class="active">Chat</button>
+  <button data-tab="files">Files</button>
+</nav>
+
+<script>
+(function () {
+  'use strict'
+
+  var DATA = JSON.parse(document.getElementById('webchat-data').textContent)
+  var CHAT_API = WEBCHAT_API_PREFIX
+
+  // Where uploaded files go. The folder's hidden note uploads/_files.md embeds
+  // every uploaded file: trip2g stores a file only when a note refers to it.
+  var UPLOAD_FOLDER = 'uploads'
+  var CONTAINER_NOTE = UPLOAD_FOLDER + '/_files.md'
+
+  // trip2g's request body limit (--max-request-body-size, 10 MB by default).
+  var MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+  // Extensions trip2g accepts as a note's file (internal/image/utils.go).
+  var UPLOAD_EXTENSIONS = ('apng avif gif jpg jpeg jfif pjpeg pjp png svg webp ' +
+    'mp4 avi mov mkv webm m4v mp3 wav ogg flac m4a aac ' +
+    'pdf doc docx xls xlsx ppt pptx txt rtf odt ods odp csv zip rar 7z').split(' ')
+
+  var FILES_PER_PAGE = 50
+  var TEXT_PREVIEW_BYTES = 200 * 1024
+
+  var $ = function (id) { return document.getElementById(id) }
+
+  // Small DOM helper: el('p', {class: 'x'}, 'text', childNode). Text is always
+  // set as text, never as HTML, so nothing from the agent or a file name can
+  // inject markup into the page.
+  function el(tag, attrs, ...children) {
+    var node = document.createElement(tag)
+    Object.entries(attrs || {}).forEach(function ([key, value]) {
+      if (value === undefined || value === null || value === false) return
+      if (key === 'onclick') node.addEventListener('click', value)
+      else node.setAttribute(key, value === true ? '' : value)
+    })
+    children.flat(Infinity).forEach(function (child) {
+      if (child === null || child === undefined || child === false) return
+      node.append(child instanceof Node ? child : String(child))
+    })
+    return node
+  }
+
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B'
+    if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB'
+    return (bytes / 1024 / 1024).toFixed(1) + ' MB'
+  }
+
+  function formatTime(seconds) {
+    if (!seconds) return ''
+    return new Date(seconds * 1000).toLocaleString()
+  }
+
+  // ---------------------------------------------------------------------------
+  // Markdown, safely. Fenced code, inline code, bold, links and images. Links
+  // and images only with http(s), a same-site path, or (images) a data:image.
+  // ---------------------------------------------------------------------------
+
+  function safeHref(url) {
+    if (/^https?:\/\//i.test(url)) return url
+    if (url.startsWith('/') && !url.startsWith('//')) return url
+    return null
+  }
+
+  function safeImageSrc(url) {
+    if (/^data:image\/(png|jpe?g|gif|webp);/i.test(url)) return url
+    return safeHref(url)
+  }
+
+  var INLINE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(!?\[[^\]\n]*\]\([^)\s]+\))|(https?:\/\/[^\s<>()]+)/g
+
+  function renderInline(text) {
+    var nodes = []
+    var last = 0
+    text.replace(INLINE, function (match, code, bold, link, bare, offset) {
+      if (offset > last) nodes.push(text.slice(last, offset))
+      last = offset + match.length
+      if (code) { nodes.push(el('code', null, code.slice(1, -1))); return match }
+      if (bold) { nodes.push(el('strong', null, bold.slice(2, -2))); return match }
+      if (bare) {
+        var href = safeHref(bare)
+        nodes.push(href ? el('a', { href: href, target: '_blank', rel: 'noopener' }, bare) : bare)
+        return match
+      }
+      var parts = /^(!?)\[([^\]]*)\]\(([^)]+)\)$/.exec(link)
+      if (parts[1]) {
+        var src = safeImageSrc(parts[3])
+        nodes.push(src ? el('img', { src: src, alt: parts[2] }) : match)
+      } else {
+        var target = safeHref(parts[3])
+        nodes.push(target ? el('a', { href: target, target: '_blank', rel: 'noopener' }, parts[2] || parts[3]) : match)
+      }
+      return match
+    })
+    if (last < text.length) nodes.push(text.slice(last))
+    return nodes
+  }
+
+  function renderMarkdown(text) {
+    var out = document.createDocumentFragment()
+    var blocks = String(text).split(/^```[^\n]*\n?/m)
+    blocks.forEach(function (block, i) {
+      if (i % 2 === 1) {
+        out.append(el('pre', null, el('code', null, block.replace(/\n$/, ''))))
+        return
+      }
+      block.split(/\n{2,}/).forEach(function (para) {
+        if (para.trim()) out.append(el('p', null, renderInline(para.replace(/^\n+|\n+$/g, ''))))
+      })
+    })
+    return out
+  }
+
+  // Hermes message content is a string, or a list of parts like {type: 'text', text}.
+  function contentText(content) {
+    if (typeof content === 'string') return content
+    if (Array.isArray(content)) {
+      return content.map(function (part) {
+        if (part.type === 'text') return part.text
+        if (part.type === 'image_url') return '![image](' + (part.image_url && part.image_url.url) + ')'
+        return ''
+      }).join('\n')
+    }
+    return content ? JSON.stringify(content) : ''
+  }
+
+  // ---------------------------------------------------------------------------
+  // Chat API: the Hermes Agent API server, reached on this site at CHAT_API
+  // through an authenticating proxy. Without a proxy session every call
+  // answers 401; the proxy's sign-in page is CHAT_API/oauth2/start?rd=<path>
+  // (the oauth2-proxy convention).
+  // Formats are Hermes' own: GET /api/sessions -> {data: [session]},
+  // GET /api/sessions/{id}/messages -> {data: [message]},
+  // POST /api/sessions/{id}/chat/stream -> server-sent events.
+  // ---------------------------------------------------------------------------
+
+  function chatFetch(path, options) {
+    return fetch(CHAT_API + path, Object.assign({ credentials: 'same-origin' }, options)).then(function (res) {
+      var type = res.headers.get('Content-Type') || ''
+      if (res.status === 401 || res.redirected || (res.ok && type.includes('text/html'))) {
+        var err = new Error('Sign in to the chat to see and send messages.')
+        err.signIn = true
+        throw err
+      }
+      // 403: the proxy refused the request (e.g. cross-site); 502: the agent is down;
+      // 503: the proxy's sign-in backend is down. Signing in fixes none of them.
+      if (res.status === 403 || res.status === 502 || res.status === 503) {
+        throw new Error('The chat is not available right now (HTTP ' + res.status + '). Try again in a minute.')
+      }
+      if (!res.ok) {
+        return res.text().then(function (body) { throw new Error('Chat API ' + res.status + ': ' + body.slice(0, 300)) })
+      }
+      return res
+    })
+  }
+
+  function chatJSON(path, options) {
+    return chatFetch(path, options).then(function (res) { return res.json() })
+  }
+
+  var state = { sessionId: null, sending: false, titles: {} }
+
+  function signInURL() {
+    return CHAT_API + '/oauth2/start?rd=' + encodeURIComponent(location.pathname)
+  }
+
+  // An error line; for a missing proxy session, a sign-in button with it.
+  function errorNode(err) {
+    var node = el('div', { class: 'error' }, err.message)
+    if (err.signIn) node.append(' ', el('a', { class: 'button primary', href: signInURL() }, 'Sign in'))
+    return node
+  }
+
+  function showChatError(err) {
+    $('messages').append(errorNode(err))
+  }
+
+  function loadSessions() {
+    var list = $('session-list')
+    return chatJSON('/api/sessions?limit=100').then(function (body) {
+      list.replaceChildren()
+      if (!body.data.length) list.append(el('div', { class: 'muted', style: 'padding:12px' }, 'No chats yet.'))
+      body.data.forEach(function (s) {
+        var label = s.title || s.preview || s.id
+        state.titles[s.id] = label
+        if (s.id === state.sessionId) $('chat-title').textContent = label
+        list.append(el('button', {
+          class: 'session' + (s.id === state.sessionId ? ' active' : ''),
+          onclick: function () { location.hash = encodeURIComponent(s.id); setTab('chat') },
+        }, el('span', { class: 'title' }, label), el('span', { class: 'muted' }, (s.source || '') + ' · ' + formatTime(s.last_active || s.started_at))))
+      })
+    }).catch(function (err) {
+      list.replaceChildren(errorNode(err))
+    })
+  }
+
+  function messageNode(role, text) {
+    var body = el('div', { class: 'body' })
+    body.append(renderMarkdown(text))
+    return el('div', { class: 'msg ' + role }, el('div', { class: 'role' }, role), body)
+  }
+
+  function loadMessages() {
+    var box = $('messages')
+    box.replaceChildren()
+    if (!state.sessionId) {
+      $('chat-title').textContent = 'Chat'
+      box.append(el('div', { class: 'muted' }, 'Pick a chat on the left or start a new one.'))
+      return Promise.resolve()
+    }
+    $('chat-title').textContent = state.titles[state.sessionId] || state.sessionId
+    return chatJSON('/api/sessions/' + encodeURIComponent(state.sessionId) + '/messages').then(function (body) {
+      body.data.forEach(function (m) {
+        if (m.role !== 'user' && m.role !== 'assistant') return
+        var text = contentText(m.content)
+        if (text.trim()) box.append(messageNode(m.role, text))
+      })
+      scrollToEnd()
+    }).catch(function (err) { showChatError(err) })
+  }
+
+  function scrollToEnd() {
+    var scroller = $('messages').parentElement
+    scroller.scrollTop = scroller.scrollHeight
+  }
+
+  function newChat() {
+    return chatJSON('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    }).then(function (body) {
+      location.hash = encodeURIComponent(body.session.id)
+      setTab('chat')
+      return loadSessions()
+    }).catch(function (err) { showChatError(err) })
+  }
+
+  // Reads a server-sent event stream from a fetch response and calls
+  // onEvent(name, data) per event. EventSource cannot POST, hence by hand.
+  function readEvents(res, onEvent) {
+    var reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
+    var buffer = ''
+    function pump() {
+      return reader.read().then(function (chunk) {
+        if (chunk.done) return
+        buffer += chunk.value
+        var frames = buffer.split('\n\n')
+        buffer = frames.pop()
+        frames.forEach(function (frame) {
+          var name = (frame.match(/^event: (.*)$/m) || [])[1]
+          var data = (frame.match(/^data: (.*)$/m) || [])[1]
+          if (name && data) onEvent(name, JSON.parse(data))
+        })
+        return pump()
+      })
+    }
+    return pump()
+  }
+
+  function send(text) {
+    if (state.sending || !text.trim()) return
+    if (!state.sessionId) {
+      newChat().then(function () { if (state.sessionId) send(text) })
+      return
+    }
+    state.sending = true
+    $('send').disabled = true
+    $('input').value = ''
+
+    var box = $('messages')
+    box.append(messageNode('user', text))
+    var reply = messageNode('assistant', '')
+    var body = reply.querySelector('.body')
+    var tools = el('div', { class: 'tool' })
+    reply.insertBefore(tools, body)
+    box.append(reply)
+    scrollToEnd()
+
+    var answer = ''
+    function redraw() { body.replaceChildren(renderMarkdown(answer)); scrollToEnd() }
+
+    // Event names are Hermes': assistant.delta, tool.started, assistant.completed,
+    // run.completed, error, done. Anything else is ignored.
+    var handlers = {
+      'assistant.delta': function (e) { answer += e.delta || ''; redraw() },
+      'tool.started': function (e) { tools.append(el('div', null, 'tool: ' + (e.tool_name || '?'))) },
+      'assistant.completed': function (e) { if (typeof e.content === 'string' && e.content) answer = e.content; redraw() },
+      'error': function (e) { reply.append(el('div', { class: 'error' }, e.message || 'error')) },
+    }
+
+    chatFetch('/api/sessions/' + encodeURIComponent(state.sessionId) + '/chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      body: JSON.stringify({ message: text }),
+    }).then(function (res) {
+      return readEvents(res, function (name, data) { if (handlers[name]) handlers[name](data) })
+    }).catch(function (err) {
+      reply.append(errorNode(err))
+    }).finally(function () {
+      state.sending = false
+      $('send').disabled = false
+      loadSessions()
+    })
+  }
+
+  // ---------------------------------------------------------------------------
+  // Files: trip2g's own asset store, through its admin GraphQL on this site.
+  // Only the site admin sees this pane; the server refuses everyone else.
+  // ---------------------------------------------------------------------------
+
+  function graphql(query, variables) {
+    return fetch('/_system/graphql', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: query, variables: variables }),
+    }).then(function (res) { return res.json() }).then(function (body) {
+      if (body.errors) throw new Error(body.errors[0].message)
+      return body.data
+    })
+  }
+
+  // A file upload goes as a GraphQL multipart request: operations, map, file.
+  function graphqlUpload(query, variables, file) {
+    var form = new FormData()
+    form.append('operations', JSON.stringify({ query: query, variables: variables }))
+    form.append('map', JSON.stringify({ 0: ['variables.input.file'] }))
+    form.append('0', file)
+    return fetch('/_system/graphql', { method: 'POST', credentials: 'same-origin', body: form })
+      .then(function (res) { return res.json() })
+      .then(function (body) {
+        if (body.errors) throw new Error(body.errors[0].message)
+        return body.data
+      })
+  }
+
+  var LIST_FILES = 'query ($filter: AdminLatestNoteAssetsFilter) { admin { allLatestNoteAssets(filter: $filter) {' +
+    ' totalCount nodes { id absolutePath fileName url size createdAt contentType notes { path url } } } } }'
+
+  var READ_NOTE = 'query ($paths: [String!]) { notePaths(filter: { paths: $paths }) { value content latestContentHash } }'
+
+  var PUSH_NOTE = 'mutation ($input: PushNotesInput!) { pushNotes(input: $input) { __typename' +
+    ' ... on PushNotesPayload { notes { id path } hashMismatches { path } } ... on ErrorPayload { message } } }'
+
+  var UPLOAD_FILE = 'mutation ($input: UploadNoteAssetInput!) { uploadNoteAsset(input: $input) { __typename' +
+    ' ... on UploadNoteAssetPayload { uploadSkipped } ... on ErrorPayload { message } } }'
+
+  var files = { search: '', offset: 0, total: 0, selected: null }
+
+  function loadFiles() {
+    if (!DATA.isAdmin) {
+      $('file-list').replaceChildren(el('div', { class: 'muted', style: 'padding:12px' },
+        'Files are for the site admin. Sign in with the button in the corner.'))
+      $('drop').hidden = true
+      $('file-search').disabled = true
+      return Promise.resolve()
+    }
+    var filter = { search: files.search || null, limit: FILES_PER_PAGE, offset: files.offset }
+    return graphql(LIST_FILES, { filter: filter }).then(function (data) {
+      var result = data.admin.allLatestNoteAssets
+      files.total = result.totalCount
+      $('file-count').textContent = result.totalCount + (result.totalCount === 1 ? ' file' : ' files')
+      var list = $('file-list')
+      list.replaceChildren()
+      if (!result.nodes.length) list.append(el('div', { class: 'muted', style: 'padding:12px' }, 'No files.'))
+      result.nodes.forEach(function (asset) {
+        list.append(el('button', {
+          class: 'file' + (files.selected && files.selected.id === asset.id ? ' active' : ''),
+          onclick: function () { files.selected = asset; showPreview(asset); loadFiles() },
+        }, el('span', { class: 'name' }, asset.absolutePath),
+          el('span', { class: 'muted' }, asset.contentType + ' · ' + formatSize(asset.size))))
+      })
+      renderPager()
+    }).catch(function (err) {
+      $('file-list').replaceChildren(el('div', { class: 'error' }, err.message))
+    })
+  }
+
+  function renderPager() {
+    var pager = $('pager')
+    pager.replaceChildren()
+    if (files.total <= FILES_PER_PAGE) return
+    var page = Math.floor(files.offset / FILES_PER_PAGE) + 1
+    var pages = Math.ceil(files.total / FILES_PER_PAGE)
+    pager.append(
+      el('button', { disabled: page === 1, onclick: function () { files.offset -= FILES_PER_PAGE; loadFiles() } }, 'Back'),
+      el('span', { class: 'muted' }, page + ' / ' + pages),
+      el('button', { disabled: page === pages, onclick: function () { files.offset += FILES_PER_PAGE; loadFiles() } }, 'Next'))
+  }
+
+  function absoluteURL(url) {
+    return new URL(url, location.origin).href
+  }
+
+  function showPreview(asset) {
+    var box = $('preview')
+    box.hidden = false
+    box.replaceChildren(el('strong', null, asset.fileName),
+      el('div', { class: 'muted' }, asset.absolutePath + ' · ' + asset.contentType + ' · ' + formatSize(asset.size)))
+
+    // The type comes from the server's MIME table, which differs between hosts
+    // (.webm is audio/webm on some), so video is also recognised by extension.
+    var type = asset.contentType
+    var isVideo = type.startsWith('video/') || /\.(mp4|webm|mov|m4v|mkv)$/i.test(asset.fileName)
+    if (type.startsWith('image/')) box.append(el('img', { src: asset.url, alt: asset.fileName }))
+    else if (isVideo) box.append(el('video', { src: asset.url, controls: true, preload: 'metadata' }))
+    else if (type.startsWith('audio/')) box.append(el('audio', { src: asset.url, controls: true }))
+    else if (type === 'application/pdf') box.append(el('iframe', { src: asset.url, title: asset.fileName }))
+    else if (type.startsWith('text/') || type.includes('json')) {
+      var pre = el('pre', null, 'Loading…')
+      box.append(pre)
+      fetch(asset.url, { credentials: 'same-origin', headers: { Range: 'bytes=0-' + (TEXT_PREVIEW_BYTES - 1) } })
+        .then(function (res) { return res.text() })
+        .then(function (text) { pre.textContent = text })
+        .catch(function (err) { pre.textContent = err.message })
+    }
+
+    if (asset.notes.length) {
+      box.append(el('div', { class: 'muted' }, 'Used in: ',
+        asset.notes.map(function (n, i) { return [i ? ', ' : '', el('a', { href: n.url, target: '_blank' }, n.path)] })))
+    }
+
+    box.append(el('div', { class: 'actions' },
+      el('button', { class: 'primary', onclick: function () { attach(asset) } }, 'Attach to message'),
+      el('a', { href: asset.url, target: '_blank', download: asset.fileName }, 'Download')))
+  }
+
+  // What the agent reads: a link it can fetch and where the file sits in the
+  // vault it shares with this site.
+  function attachmentText(asset) {
+    var used = asset.notes.map(function (n) { return n.path }).join(', ')
+    return '[file: ' + asset.fileName + '](' + absoluteURL(asset.url) + ')\n' +
+      '(trip2g vault file ' + asset.absolutePath + ', ' + asset.contentType + ', ' + formatSize(asset.size) +
+      (used ? ', referenced by ' + used : '') + ')'
+  }
+
+  function attach(asset) {
+    var input = $('input')
+    var before = input.value.slice(0, input.selectionStart)
+    var after = input.value.slice(input.selectionEnd)
+    var block = (before && !before.endsWith('\n') ? '\n' : '') + attachmentText(asset) + '\n'
+    input.value = before + block + after
+    input.focus()
+    setTab('chat')
+  }
+
+  // ---------------------------------------------------------------------------
+  // Upload: add the file to the hidden note uploads/_files.md, then send the
+  // bytes for that note version. That is how trip2g's own sync uploads files.
+  // ---------------------------------------------------------------------------
+
+  function uploadStatus(text, isError) {
+    var status = $('upload-status')
+    status.textContent = text
+    status.className = isError ? 'error' : 'muted'
+  }
+
+  function sha256Hex(file) {
+    return file.arrayBuffer().then(function (buffer) { return crypto.subtle.digest('SHA-256', buffer) }).then(function (digest) {
+      return Array.from(new Uint8Array(digest)).map(function (b) { return b.toString(16).padStart(2, '0') }).join('')
+    })
+  }
+
+  // Characters a wikilink cannot carry become "_"; a taken name gets -2, -3 …
+  function freeName(original, taken) {
+    var clean = original.replace(/[\[\]|#^\n\r]/g, '_')
+    var dot = clean.lastIndexOf('.')
+    var stem = dot > 0 ? clean.slice(0, dot) : clean
+    var ext = dot > 0 ? clean.slice(dot) : ''
+    var name = clean
+    for (var n = 2; taken.has(name.toLowerCase()); n++) name = stem + '-' + n + ext
+    return name
+  }
+
+  function uploadFile(file) {
+    var ext = (file.name.split('.').pop() || '').toLowerCase()
+    if (!UPLOAD_EXTENSIONS.includes(ext)) {
+      uploadStatus('trip2g does not store .' + ext + ' files. Allowed: ' + UPLOAD_EXTENSIONS.join(', '), true)
+      return Promise.resolve()
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      uploadStatus(file.name + ' is ' + formatSize(file.size) + '; the limit is ' + formatSize(MAX_UPLOAD_BYTES) + '.', true)
+      return Promise.resolve()
+    }
+
+    uploadStatus('Uploading ' + file.name + '…')
+    var prefix = '/' + UPLOAD_FOLDER + '/'
+    var name, versionId
+
+    return Promise.all([
+      graphql(READ_NOTE, { paths: [CONTAINER_NOTE] }),
+      graphql(LIST_FILES, { filter: { pathPrefix: prefix } }),
+      sha256Hex(file),
+    ]).then(function ([noteData, listData, hash]) {
+      var note = noteData.notePaths[0]
+      var taken = new Set(listData.admin.allLatestNoteAssets.nodes.map(function (a) { return a.absolutePath.slice(prefix.length).toLowerCase() }))
+      name = freeName(file.name, taken)
+      var content = note ? note.content.replace(/\n*$/, '\n') : '---\nfree: false\n---\nFiles uploaded from the chat page.\n'
+      var push = {
+        updates: [{ path: CONTAINER_NOTE, content: content + '![[' + name + ']]\n', expectedHash: note ? note.latestContentHash : '' }],
+      }
+      return graphql(PUSH_NOTE, { input: push }).then(function (data) {
+        var result = data.pushNotes
+        if (result.__typename === 'ErrorPayload') throw new Error(result.message)
+        if (result.hashMismatches.length) throw new Error('Someone changed ' + CONTAINER_NOTE + ' at the same time. Try again.')
+        // notes lists every note the push touched or re-indexed; take ours.
+        versionId = result.notes.find(function (n) { return n.path === CONTAINER_NOTE }).id
+        var upload = { file: null, noteId: versionId, sha256Hash: hash, path: name, absolutePath: prefix + name }
+        return graphqlUpload(UPLOAD_FILE, { input: upload }, file)
+      })
+    }).then(function (data) {
+      var result = data.uploadNoteAsset
+      if (result.__typename === 'ErrorPayload') throw new Error(result.message)
+      uploadStatus('Uploaded ' + prefix + name)
+      files.search = ''
+      files.offset = 0
+      $('file-search').value = ''
+      return graphql(LIST_FILES, { filter: { pathPrefix: prefix + name, limit: 1 } })
+    }).then(function (data) {
+      var uploaded = data.admin.allLatestNoteAssets.nodes[0]
+      if (uploaded) { files.selected = uploaded; showPreview(uploaded) }
+      return loadFiles()
+    }).catch(function (err) {
+      uploadStatus('Upload failed: ' + err.message, true)
+    })
+  }
+
+  // ---------------------------------------------------------------------------
+  // Wiring.
+  // ---------------------------------------------------------------------------
+
+  function setTab(tab) {
+    $('app').dataset.tab = tab
+    document.querySelectorAll('#tabs button').forEach(function (b) { b.classList.toggle('active', b.dataset.tab === tab) })
+  }
+
+  function openFromHash() {
+    state.sessionId = decodeURIComponent(location.hash.slice(1)) || null
+    loadMessages()
+    loadSessions()
+  }
+
+  $('tabs').addEventListener('click', function (e) { if (e.target.dataset.tab) setTab(e.target.dataset.tab) })
+  $('new-chat').addEventListener('click', newChat)
+  $('composer').addEventListener('submit', function (e) { e.preventDefault(); send($('input').value) })
+  $('input').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send($('input').value) }
+  })
+
+  var searchTimer
+  $('file-search').addEventListener('input', function (e) {
+    clearTimeout(searchTimer)
+    searchTimer = setTimeout(function () { files.search = e.target.value.trim(); files.offset = 0; loadFiles() }, 250)
+  })
+  $('file-input').addEventListener('change', function (e) {
+    if (e.target.files[0]) uploadFile(e.target.files[0])
+    e.target.value = ''
+  })
+  var drop = $('drop')
+  drop.addEventListener('dragover', function (e) { e.preventDefault(); drop.classList.add('over') })
+  drop.addEventListener('dragleave', function () { drop.classList.remove('over') })
+  drop.addEventListener('drop', function (e) {
+    e.preventDefault()
+    drop.classList.remove('over')
+    if (e.dataTransfer.files[0]) uploadFile(e.dataTransfer.files[0])
+  })
+
+  window.addEventListener('hashchange', openFromHash)
+  openFromHash()
+  loadFiles()
+})()
+</script>
+</body>
+</html>
