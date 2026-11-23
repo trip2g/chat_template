@@ -313,10 +313,15 @@
   function chatFetch(path, options) {
     return fetch(CHAT_API + path, Object.assign({ credentials: 'same-origin' }, options)).then(function (res) {
       var type = res.headers.get('Content-Type') || ''
-      if (res.status === 401 || res.status === 403 || res.redirected || (res.ok && type.includes('text/html'))) {
+      if (res.status === 401 || res.redirected || (res.ok && type.includes('text/html'))) {
         var err = new Error('Sign in to the chat to see and send messages.')
         err.signIn = true
         throw err
+      }
+      // 403: the door refused a cross-site request; 502: the agent is down;
+      // 503: the sign-in service is down. None of them is fixed by signing in.
+      if (res.status === 403 || res.status === 502 || res.status === 503) {
+        throw new Error('The chat is not available right now (HTTP ' + res.status + '). Try again in a minute.')
       }
       if (!res.ok) {
         return res.text().then(function (body) { throw new Error('Chat API ' + res.status + ': ' + body.slice(0, 300)) })

@@ -29,6 +29,8 @@ markup, styles and a plain script, no build step. Edit it in place and sync.
   address in `webchat.md` → `chat_api` (default `/_system/webchatproxy`),
   behind a sign-in door: without a door session every call answers 401 and
   the page shows a "Sign in" button that opens `<chat_api>/oauth2/start`.
+  403 (a request from another site), 502 (the agent is down) and 503 (the
+  sign-in service is down) show "try again" instead.
   Formats are
   Hermes' own: `GET /api/sessions`, `POST /api/sessions`,
   `GET /api/sessions/{id}/messages`, `POST /api/sessions/{id}/chat/stream`
