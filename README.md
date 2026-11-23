@@ -4,6 +4,8 @@ A [trip2g](https://github.com/trip2g/trip2g) layout: a chat page for a
 [Hermes Agent](https://github.com/NousResearch/hermes-agent) API server, with a
 file explorer over the site's own stored files.
 
+![The chat page: chat sessions on the left, a streamed reply about an attached PDF in the middle, the file explorer with a PDF preview on the right](docs/screenshot.png)
+
 - **Left** – chat sessions. **Middle** – the chat, with streaming replies.
   **Right** – files: search, preview (image, video, audio, PDF, text), upload,
   and "Attach to message", which puts the file's link and its vault path into
