@@ -25,6 +25,10 @@ markup, styles and a plain script, no build step. Edit it in place and sync.
 | Preview by file type | `showPreview` |
 | The text a file adds to a message | `attachmentText` |
 | Upload to the proxy's cache | `storeFile` |
+| Rename a chat | `startRename`, `renameSession` |
+| Stop, the queue of messages typed while the agent answers | `deliver`, `enqueue`, `drainQueue` (queue kept in localStorage per chat) |
+| Copy button, tools icon under an answer | `metaLine`, `showTools` in `deliver` |
+| Going to the sign-in door by itself, once | `autoSignIn` (sessionStorage flag; a failed sign-in shows the button) |
 | Chips for `@name`, `sandbox:` and `MEDIA:` in messages | `fileReference`, `cacheTarget`, `fileNode` |
 | Paperclip, drop and paste into the message box | the section "The message box" – `attachToComposer` |
 | Voice message | the same section – `startRecording`, `sendVoice`, `transcribe` |

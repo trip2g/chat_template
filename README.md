@@ -11,6 +11,7 @@ file explorer over the site's own stored files.
   and "Attach to message", which puts the file's link and its vault path into
   the message.
 - **Message box** – a paperclip (or a dropped or pasted file) attaches a file to the message as a chip; the message carries its name as `@name`. With the box empty, a microphone records a voice message that goes as transcribed text with the recording's `@name`.
+- **While the agent answers** – Stop ends only the display (the agent may finish in the background; the page says so); messages typed meanwhile wait in a per-chat queue kept in this browser and go one by one when the turn ends. Under an answer: a copy button and a small gear that lists the tools used.
 - **Files in answers** – `@name`, `@/opt/webchat-files/name`, `sandbox:/opt/webchat-files/…` and `MEDIA:/opt/webchat-files/…` become chips (pictures show inline); a path outside that folder is a muted chip.
 - One HTML file, plain JavaScript and CSS, no build step and no external
   scripts. You (or an agent) can edit it in place in the vault.
@@ -47,8 +48,9 @@ proxy lives elsewhere (no trailing slash). Formats are Hermes' own, unchanged.
 |---|---|---|
 | `GET /api/sessions?limit=100` | – | `data[]`: `id`, `title`, `preview`, `source`, `last_active`, `started_at` |
 | `POST /api/sessions` | JSON `{}` | `session.id` |
+| `PATCH /api/sessions/{id}` | JSON `{"title": "…"}` | renames a chat (click the title, the ✎ on a row, or the menu) |
 | `GET /api/sessions/{id}/messages` | – | `data[]`: `role` (`user` / `assistant`; others are skipped), `content` (a string, or a list of parts with `type: "text"` / `"image_url"`) |
-| `POST /api/sessions/{id}/chat/stream` | JSON `{"message": "<text>"}`, `Accept: text/event-stream` | server-sent events, below |
+| `POST /api/sessions/{id}/chat/stream` | JSON `{"message": "<text>"}` (or a list of parts: text and `image_url` for pictures up to 4 MB), `Accept: text/event-stream` | server-sent events, below |
 
 Server-sent events the page uses; every other event is ignored:
 
