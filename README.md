@@ -10,6 +10,7 @@ file explorer over the site's own stored files.
   **Right** – files: search, preview (image, video, audio, PDF, text), upload,
   and "Attach to message", which puts the file's link and its vault path into
   the message.
+- **Message box** – a paperclip (or a dropped or pasted file) attaches a file to the message; with the box empty, a microphone records a voice message that goes as transcribed text with the recording attached.
 - One HTML file, plain JavaScript and CSS, no build step and no external
   scripts. You (or an agent) can edit it in place in the vault.
 - Light and dark, follows the site's theme toggle; one pane at a time on phones.
@@ -56,6 +57,11 @@ Server-sent events the page uses; every other event is ignored:
 | `tool.started` | `tool_name` | shows "tool: name" above the reply |
 | `assistant.completed` | `content` | replaces the reply with the final text |
 | `error` | `message` | shows the error under the reply |
+
+Optional, for voice messages: `GET <prefix>/api/transcribe` answers 2xx when the
+proxy can turn speech into text (on any other status the microphone stays
+hidden), and `POST <prefix>/api/transcribe` takes a multipart form with an
+`audio` file (webm or ogg, opus) and answers JSON `{ "text": "…" }`.
 
 Every request is `fetch` with `credentials: 'same-origin'`; POSTs carry
 `Content-Type: application/json`. The page sends no token of its own:

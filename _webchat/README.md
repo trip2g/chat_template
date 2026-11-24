@@ -26,6 +26,8 @@ markup, styles and a plain script, no build step. Edit it in place and sync.
 | Preview by file type | `showPreview` |
 | The text a file adds to a message | `attachmentText` |
 | Upload | the section "Upload" – `uploadFile` |
+| Paperclip, drop and paste into the message box | the section "The message box" – `attachToComposer` |
+| Voice message | the same section – `startRecording`, `sendVoice`, `transcribe` |
 
 ## How it talks to the server
 
@@ -48,6 +50,19 @@ markup, styles and a plain script, no build step. Edit it in place and sync.
   - only these extensions are stored: images, video, audio, pdf, office
     documents, txt, csv, zip/rar/7z (`UPLOAD_EXTENSIONS`); at most 10 MB
     (`MAX_UPLOAD_BYTES`, the server's request limit).
+
+## Attaching a file and voice messages in the message box
+
+- The paperclip, a file dropped on the message box and an image pasted into it
+  store the file like the Files panel does (`storeFile`) and add the same text
+  as "Attach to message" to the message being typed. Admin only.
+- The microphone replaces Send while the box is empty. It records with
+  `MediaRecorder` (opus in webm or ogg, at most five minutes), then sends the
+  recording to `POST <prefix>/api/transcribe` (multipart, field `audio`; the
+  answer is `{ "text": "…" }`). The text goes as the message, starting with
+  `🎤 voice:`, and the recording is stored and attached so the agent can open
+  it. `GET <prefix>/api/transcribe` answers 2xx when the proxy can transcribe;
+  on 501 or an error the microphone stays hidden.
 
 ## A file attached to a message
 
