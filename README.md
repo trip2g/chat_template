@@ -10,7 +10,8 @@ file explorer over the site's own stored files.
   **Right** – files: search, preview (image, video, audio, PDF, text), upload,
   and "Attach to message", which puts the file's link and its vault path into
   the message.
-- **Message box** – a paperclip (or a dropped or pasted file) attaches a file to the message; with the box empty, a microphone records a voice message that goes as transcribed text with the recording attached.
+- **Message box** – a paperclip (or a dropped or pasted file) attaches a file to the message as a chip; the message carries its name as `@name`. With the box empty, a microphone records a voice message that goes as transcribed text with the recording's `@name`.
+- **Files in answers** – `@name`, `@/opt/webchat-files/name`, `sandbox:/opt/webchat-files/…` and `MEDIA:/opt/webchat-files/…` become chips (pictures show inline); a path outside that folder is a muted chip.
 - One HTML file, plain JavaScript and CSS, no build step and no external
   scripts. You (or an agent) can edit it in place in the vault.
 - Light and dark, follows the site's theme toggle; one pane at a time on phones.
@@ -76,29 +77,21 @@ the page reads the answers:
 Everyone who can open the page and pass the proxy sees every session the API
 lists. Restrict that in the proxy if you need to.
 
-### 2. A trip2g admin session for the file explorer
+### 2. Files, through the same proxy
 
-The explorer uses trip2g's GraphQL at `/_system/graphql` with the signed-in
-admin's session cookie. Anyone else gets "files are for the site admin". It
-needs a trip2g version that has the `filter` argument of
-`admin.allLatestNoteAssets` and the `contentType` and `notes` fields of
-`AdminNoteAsset`.
+Attached files and the files an agent shows live in one folder the proxy keeps
+(on the agent's disk, `/opt/webchat-files`); the page never talks to the
+site's own file store.
 
-| Operation | Used for |
-|---|---|
-| `admin { allLatestNoteAssets(filter: { search, pathPrefix, limit, offset }) { totalCount nodes { id absolutePath fileName url size createdAt contentType notes { path url } } } }` | list, search, paging, preview, "Used in" |
-| `notePaths(filter: { paths }) { value content latestContentHash }` | read the upload note before adding a file |
-| `pushNotes(input: { updates: [{ path, content, expectedHash }] })` | add `![[file]]` to `uploads/_files.md` |
-| `uploadNoteAsset(input: { file, noteId, sha256Hash, path, absolutePath })` | send the file's bytes (GraphQL multipart request) |
+| Method and path (after the prefix) | Request | Response |
+|---|---|---|
+| `GET /api/files` | – | `{ "files": [{ "name", "path", "size", "modified" }] }`, newest first; `name` may carry a folder (`out/chart.png`) |
+| `POST /api/files` | multipart form, one file in `file`, at most 10 MB | `{ "name", "path", "size", "modified" }`; a taken name gets `-2`, a name never has spaces |
+| `GET /api/files/{name}` | – | the file's bytes; 404 once it was deleted to make room |
 
-Files are fetched for preview from their `url` (`/_system/assets/…`) with the
-same session.
-
-Uploads go to `/uploads/` and are embedded in the hidden note
-`uploads/_files.md`; trip2g keeps a file only while a note refers to it. The
-page refuses, before sending, a file whose extension trip2g does not store as
-an asset, and a file over 10 MB (trip2g's default request limit). A name that
-is taken gets `-2`, `-3`, ….
+The message carries a file as `@name` (the file `/opt/webchat-files/name` on
+the agent's disk); the agent shows a file by copying it into
+`/opt/webchat-files/out/` and linking `sandbox:/opt/webchat-files/out/name`.
 
 The sign-in button in the corner is trip2g's own
 (`defaultTemplate.UserSpaceScripts()`).

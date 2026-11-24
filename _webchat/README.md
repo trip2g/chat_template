@@ -18,14 +18,14 @@ markup, styles and a plain script, no build step. Edit it in place and sync.
 | The agent's language | the `lang` attribute of `<html>`; the RU/EN switch overrides it and is kept in this browser (`webchat_lang`) |
 | Chats hidden from the list | `HIDDEN_SESSION_ID`, `HIDDEN_SESSION_SOURCES` |
 | The chat API prefix | `WEBCHAT_API_PREFIX` in the first `<script>` |
-| Whether the visitor is the admin | `<script type="application/json" id="webchat-data">` |
 | Chat list, messages, sending | the section "Chat API" in the script |
 | Streaming reply | `readEvents` and the `handlers` table in `send` |
 | How a message is drawn (code, tables, links) | `renderMarkdown` / `renderInline` |
-| File list, search, paging | the section "Files" – `LIST_FILES`, `loadFiles` |
+| Recent files, search, preview | the section "Files" – `loadFiles`, `renderFiles`, `showPreview` |
 | Preview by file type | `showPreview` |
 | The text a file adds to a message | `attachmentText` |
-| Upload | the section "Upload" – `uploadFile` |
+| Upload to the proxy's cache | `storeFile` |
+| Chips for `@name`, `sandbox:` and `MEDIA:` in messages | `fileReference`, `cacheTarget`, `fileNode` |
 | Paperclip, drop and paste into the message box | the section "The message box" – `attachToComposer` |
 | Voice message | the same section – `startRecording`, `sendVoice`, `transcribe` |
 
@@ -40,41 +40,35 @@ markup, styles and a plain script, no build step. Edit it in place and sync.
   (server-sent events `assistant.delta`, `tool.started`,
   `assistant.completed`, `run.completed`, `error`, `done`). Every chat is
   visible to everyone who can open the page.
-- **Files**: trip2g's admin GraphQL at `/_system/graphql`, with the signed-in
-  admin's session. Nobody else gets the file list.
-  - list: `admin.allLatestNoteAssets(filter: {search, pathPrefix, limit, offset})`
-  - upload: the file is embedded into the hidden note `uploads/_files.md`
-    (`pushNotes`), then its bytes are sent for that note version
-    (`uploadNoteAsset`). trip2g keeps a file only while a note refers to it,
-    so do not delete lines from `uploads/_files.md`.
-  - only these extensions are stored: images, video, audio, pdf, office
-    documents, txt, csv, zip/rar/7z (`UPLOAD_EXTENSIONS`); at most 10 MB
-    (`MAX_UPLOAD_BYTES`, the server's request limit).
+- **Files**: the proxy's own file cache, through `<prefix>/api/files` (list,
+  upload, download). It is one folder on the agent's disk,
+  `/opt/webchat-files`, 10 MB per file, the oldest deleted to make room. Nothing
+  goes into the knowledge base from this page.
 
 ## Attaching a file and voice messages in the message box
 
 - The paperclip, a file dropped on the message box and an image pasted into it
-  store the file like the Files panel does (`storeFile`) and add the same text
-  as "Attach to message" to the message being typed. Admin only.
+  upload the file to the cache (`storeFile`) and show it as a chip; the message
+  then carries `@name`. Any signed-in person can attach.
 - The microphone replaces Send while the box is empty. It records with
   `MediaRecorder` (opus in webm or ogg, at most five minutes), then sends the
   recording to `POST <prefix>/api/transcribe` (multipart, field `audio`; the
   answer is `{ "text": "…" }`). The text goes as the message, starting with
-  `🎤 voice:`, and the recording is stored and attached so the agent can open
-  it. `GET <prefix>/api/transcribe` answers 2xx when the proxy can transcribe;
+  `🎤 voice:`, and the recording is stored in the cache and added as `@name`.
+  `GET <prefix>/api/transcribe` answers 2xx when the proxy can transcribe;
   on 501 or an error the microphone stays hidden.
 
-## A file attached to a message
+## A file attached to a message, and a file the agent shows
 
-"Attach to message" adds two lines to the message:
-
-```
-[file: photo.png](https://<site>/_system/assets/<sha256>/photo.png)
-(trip2g vault file /uploads/photo.png, image/png, 120 KB, referenced by uploads/_files.md)
-```
-
-The link needs the site admin's session or an API key. The vault path is the
-same file in your own vault after sync.
+A message carries `@report.pdf` for the file `/opt/webchat-files/report.pdf` on
+the agent's disk. The agent shows a file by copying it into
+`/opt/webchat-files/out/` and linking it as
+`[chart](sandbox:/opt/webchat-files/out/chart.png)`. The page turns `@name`,
+`@/opt/webchat-files/…`, `sandbox:/opt/webchat-files/…` and
+`MEDIA:/opt/webchat-files/…` into the download route
+`<prefix>/api/files/<name>`: a picture shows inline, anything else is a chip. A
+path outside `/opt/webchat-files` is a muted "file is on the agent's disk" chip.
+An evicted file is "no longer available".
 
 ## Rules that keep the page working
 
@@ -83,8 +77,8 @@ same file in your own vault after sync.
   anywhere in the file except the three Jet calls already there. The page
   stops rendering otherwise. Use `{ a: 1 }` with spaces if you build objects.
 - **Never put text from a message, a file or a file name into `innerHTML`.**
-  Use `el(...)` or `textContent`. The page runs with the admin's session:
-  markup injected from a chat reply could do anything the admin can.
+  Use `el(...)` or `textContent`. The page runs with the visitor's session:
+  markup injected from a chat reply could act as the visitor.
 - Links and images in replies are allowed only for `http(s)`, a path on this
   site, and `data:image/png|jpeg|gif|webp`. Keep it so.
 - Keep everything in this one file. The vault sync carries `.html` and `.md`

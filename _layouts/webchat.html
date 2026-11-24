@@ -76,7 +76,9 @@
   .only-narrow { display: none; }
 
   /* Three columns: sessions | chat | files. */
-  .app { display: grid; grid-template-columns: 260px 1fr 340px; height: 100vh; height: 100dvh; }
+  .app { display: grid; grid-template-columns: 260px 1fr; height: 100vh; height: 100dvh; }
+  .app[data-files="open"] { grid-template-columns: 260px 1fr 340px; }
+  .app:not([data-files="open"]) .files { display: none; }
   .pane { display: flex; flex-direction: column; min-height: 0; min-width: 0;
     border-right: 1px solid var(--line); background: var(--panel); }
   .pane:last-child { border-right: 0; }
@@ -90,6 +92,7 @@
   .signin { position: fixed; top: 8px; right: 12px; z-index: 20; }
   /* Room for the sign-in corner, which sits over the Files header. */
   .files > header { padding-right: 190px; }
+  .app:not([data-files="open"]) .chat > header { padding-right: 190px; }
   .scrim { display: none; }
 
   /* Sessions. */
@@ -132,8 +135,8 @@
   @keyframes pulse { 50% { opacity: .25; } }
   @media (prefers-reduced-motion: reduce) { .tools[data-live] summary::before { animation: none; } }
   .composer { padding: 12px 16px; border-top: 1px solid var(--line); background: var(--panel); }
-  .composer form { max-width: 820px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end; }
-  .composer textarea { resize: none; min-height: 44px; max-height: 40vh; max-height: 40dvh; }
+  .composer form { display: flex; gap: 8px; align-items: flex-end; }
+  .composer textarea { flex: 1; min-width: 0; width: auto; resize: none; min-height: 44px; max-height: calc(8 * 1.5em + 22px); }
   .composer .send { width: 44px; height: 44px; padding: 0; border-radius: 50%; flex: none;
     display: inline-flex; align-items: center; justify-content: center; }
   .composer .send svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2;
@@ -142,13 +145,13 @@
   .composer [hidden] { display: none !important; }
   .composer .icon-button { width: 44px; height: 44px; }
   .composer.over textarea { border-color: var(--accent); }
-  .composer-status { max-width: 820px; margin: 0 auto 6px; font-size: 13px; color: var(--muted);
+  .composer-status { margin: 0 0 6px; font-size: 13px; color: var(--muted);
     display: flex; align-items: center; gap: 8px; }
   .composer-status:empty { display: none; }
   .composer-status.failed { color: var(--danger); }
   .composer-status.busy::before { content: ""; width: 12px; height: 12px; border-radius: 50%; flex: none;
     border: 2px solid var(--line); border-top-color: var(--accent); animation: spin .8s linear infinite; }
-  .recorder { max-width: 820px; margin: 0 auto; display: flex; align-items: center; gap: 10px; min-height: 44px; }
+  .recorder { display: flex; align-items: center; gap: 10px; min-height: 44px; }
   .recorder .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); flex: none;
     animation: pulse 1s ease-in-out infinite; }
   .recorder .time { font-variant-numeric: tabular-nums; }
@@ -158,22 +161,42 @@
     .composer-status.busy::before, .recorder .dot { animation: none; }
   }
 
-  /* Files. */
-  .files-tools { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;
-    border-bottom: 1px solid var(--line); }
-  .drop { border: 2px dashed var(--line); border-radius: 8px; padding: 10px; text-align: center; }
-  .drop.over { border-color: var(--accent); }
+  /* Files kept for the chat. */
+  :root { --file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z'/%3E%3Cpath d='M14 3v5h5'/%3E%3C/svg%3E"); }
+  .chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; vertical-align: middle;
+    padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--code);
+    font-size: 13px; line-height: 1.5; color: inherit; text-decoration: none; }
+  .chip::before { content: ""; width: 14px; height: 14px; flex: none; background: currentColor; opacity: .7;
+    -webkit-mask: var(--file-icon) center / contain no-repeat; mask: var(--file-icon) center / contain no-repeat; }
+  .chip .chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  a.chip:hover { border-color: var(--accent); }
+  .chip.gone, .chip.outside { color: var(--muted); border-style: dashed; background: none; }
+  .chip.gone .chip-name { text-decoration: line-through; }
+  .chip .chip-remove { width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: none; flex: none;
+    display: inline-flex; align-items: center; justify-content: center; font-size: 16px; line-height: 1; margin-right: -4px; }
+  .chip .chip-remove:hover { background: var(--line); }
+  .chips { margin: 0 0 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips:empty { display: none; }
+  .chips .chip { max-width: min(100%, 260px); }
+  .msg img.inline { display: block; max-width: min(100%, 420px); max-height: 360px; margin: 6px 0; border-radius: 8px; cursor: zoom-in; }
+  .menu-pop { position: absolute; right: 8px; top: calc(100% - 4px); z-index: 10; min-width: 200px; padding: 6px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, .3);
+    display: flex; flex-direction: column; }
+  .menu-pop[hidden] { display: none; }
+  .menu-pop button { text-align: left; border: 0; background: none; padding: 9px 10px; border-radius: 6px; }
+  .menu-pop button:hover { background: var(--user); }
+  .pane > header { position: relative; }
+  .files-tools { padding: 10px 12px; border-bottom: 1px solid var(--line); }
   .file { display: block; width: 100%; text-align: left; border: 0; border-radius: 0;
     border-bottom: 1px solid var(--line); background: none; padding: 8px 12px; }
   .file.active { background: var(--user); }
   .file .name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file .meta-line { display: flex; gap: 12px; justify-content: space-between; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .file .meta-line .dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file .meta-line .info { flex: none; }
   .preview { border-top: 1px solid var(--line); padding: 10px 12px; max-height: 50%; overflow-y: auto; }
   .preview img, .preview video { max-width: 100%; max-height: 260px; display: block; margin: 6px 0; }
-  .preview iframe { width: 100%; height: 300px; border: 1px solid var(--line); border-radius: 6px; }
-  .preview pre { background: var(--code); padding: 8px; border-radius: 6px; max-height: 260px;
-    overflow: auto; font-size: 12px; white-space: pre-wrap; }
   .preview .actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-  .pager { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; }
 
   /* Phones, like Telegram: the chat fills the screen with the input at the
      bottom; the chat list slides in from the left, the files from the right. */
@@ -184,7 +207,8 @@
       visibility: hidden; transition: transform .22s ease, visibility 0s linear .22s;
       box-shadow: 0 0 24px rgba(0, 0, 0, .35); }
     .sessions { left: 0; width: min(86vw, 340px); transform: translateX(-104%); }
-    .files { right: 0; width: min(100vw, 420px); transform: translateX(104%); }
+    .files { right: 0; width: min(100vw, 420px); transform: translateX(104%); display: flex !important; }
+    .app:not([data-files="open"]) .chat > header { padding-right: 12px; }
     .app[data-tab="sessions"] .sessions, .app[data-tab="files"] .files {
       transform: none; visibility: visible; transition-delay: 0s; }
     .scrim { display: block; position: fixed; inset: 0; z-index: 25; background: rgba(0, 0, 0, .45);
@@ -205,14 +229,7 @@
 </head>
 <body class="webchat">
 
-<!-- From the server: whether the visitor is the site admin. -->
-<script type="application/json" id="webchat-data">
-  {{ json(map(
-    "isAdmin", currentUser.IsAdmin()
-  )) }}
-</script>
-
-<div class="app" id="app" data-tab="chat">
+<div class="app" id="app" data-tab="chat" data-files="closed">
   <section class="pane sessions" id="sessions-pane">
     <header>
       <h2 data-i18n="chats">Chats</h2>
@@ -237,13 +254,18 @@
         <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
       </button>
       <h2 id="chat-title" data-i18n="chat">Chat</h2>
-      <button class="icon-button only-narrow" id="open-files" data-i18n-label="files" aria-label="Files">
-        <svg viewBox="0 0 24 24"><path d="M21 12.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l9-9a3.7 3.7 0 0 1 5.2 5.2l-9 9a1.8 1.8 0 0 1-2.6-2.6l8.3-8.3"/></svg>
+      <button class="icon-button" id="chat-menu" aria-haspopup="true" aria-expanded="false" aria-controls="chat-menu-pop"
+        data-i18n-label="chatMenu" aria-label="Chat menu">
+        <svg viewBox="0 0 24 24"><path d="M5 12h.01M12 12h.01M19 12h.01" stroke-width="3"/></svg>
       </button>
+      <div class="menu-pop" id="chat-menu-pop" hidden>
+        <button type="button" id="menu-files" data-i18n="recentFiles">Recent files</button>
+      </div>
     </header>
     <div class="scroll"><div class="messages" id="messages"></div></div>
     <div class="composer" id="composer-box">
       <div class="composer-status" id="composer-status" role="status"></div>
+      <div class="chips" id="chips"></div>
       <div class="recorder" id="recorder" hidden>
         <button type="button" class="icon-button" id="rec-cancel" data-i18n-label="cancel" aria-label="Cancel">
           <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
@@ -273,22 +295,16 @@
 
   <section class="pane files" id="files-pane">
     <header>
-      <h2 data-i18n="files">Files</h2>
+      <h2 data-i18n="recentFiles">Recent files</h2>
       <span class="muted" id="file-count"></span>
-      <button class="icon-button only-narrow" data-close data-i18n-label="close" aria-label="Close">
+      <button class="icon-button" data-close-files data-i18n-label="close" aria-label="Close">
         <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
       </button>
     </header>
     <div class="files-tools">
       <input type="search" id="file-search" data-i18n-placeholder="searchFiles" placeholder="Search files">
-      <label class="drop" id="drop">
-        <span data-i18n="drop">Drop a file here or choose one</span>
-        <input type="file" id="file-input" hidden>
-      </label>
-      <div class="muted" id="upload-status"></div>
     </div>
     <div class="scroll" id="file-list"></div>
-    <div class="pager" id="pager"></div>
     <div class="preview" id="preview" hidden></div>
   </section>
 </div>
@@ -298,23 +314,14 @@
 (function () {
   'use strict'
 
-  var DATA = JSON.parse(document.getElementById('webchat-data').textContent)
   var CHAT_API = WEBCHAT_API_PREFIX
 
-  // Where uploaded files go. The folder's hidden note uploads/_files.md embeds
-  // every uploaded file: trip2g stores a file only when a note refers to it.
-  var UPLOAD_FOLDER = 'uploads'
-  var CONTAINER_NOTE = UPLOAD_FOLDER + '/_files.md'
-
-  // trip2g's request body limit (--max-request-body-size, 10 MB by default).
+  // The proxy keeps what people attach and what the agent shows in one folder
+  // (/opt/webchat-files on the agent's disk, 10 MB per file).
+  var CACHE_DIR = '/opt/webchat-files/'
   var MAX_UPLOAD_BYTES = 10 * 1024 * 1024
-
-  // Extensions trip2g accepts as a note's file (internal/image/utils.go).
-  var UPLOAD_EXTENSIONS = ('apng avif gif jpg jpeg jfif pjpeg pjp png svg webp ' +
-    'mp4 avi mov mkv webm m4v mp3 wav ogg flac m4a aac ' +
-    'pdf doc docx xls xlsx ppt pptx txt rtf odt ods odp csv zip rar 7z').split(' ')
-
-  var FILES_PER_PAGE = 50
+  var FILES_SHOWN = 200
+  var IMAGE_NAME = /\.(png|jpe?g|gif|webp|avif)$/i
   var TEXT_PREVIEW_BYTES = 200 * 1024
 
   var $ = function (id) { return document.getElementById(id) }
@@ -336,23 +343,20 @@
     ru: {
       chats: 'Чаты', chat: 'Чат', files: 'Файлы', newChat: 'Новый чат', close: 'Закрыть',
       language: 'Язык', send: 'Отправить', placeholder: 'Сообщение',
-      searchFiles: 'Поиск файла по имени или папке',
-      drop: 'Перетащите файл сюда или выберите',
+      searchFiles: 'Поиск файла по имени',
       you: 'Вы', agent: 'Агент',
       noChats: 'Чатов пока нет.', pickChat: 'Выберите чат или начните новый.',
       signInMessage: 'Войдите в чат, чтобы читать и отправлять сообщения.', signIn: 'Войти',
       unavailable: 'Чат сейчас недоступен (HTTP %s). Попробуйте через минуту.',
       apiError: 'Ошибка чата %s: %s',
       working: 'Работаю…', usedTools: 'Использовано инструментов: %s', workingTools: 'Работаю… (%s)',
-      adminOnly: 'Файлы доступны администратору сайта. Войдите кнопкой в углу.',
       noFiles: 'Файлов нет.', fileOne: 'файл', fileFew: 'файла', fileMany: 'файлов',
-      back: 'Назад', next: 'Далее', usedIn: 'Используется в: ', loading: 'Загрузка…',
-      attach: 'Прикрепить к сообщению', download: 'Скачать',
-      uploadBadExt: 'trip2g не хранит файлы .%s. Допустимые: %s',
+      attach: 'Добавить к сообщению', download: 'Скачать',
       uploadTooBig: '%s весит %s, предел %s.',
-      uploading: 'Загружаю %s…', uploaded: 'Загружено %s',
+      uploading: 'Загружаю %s…', loading: 'Загрузка…',
       uploadFailed: 'Не удалось загрузить: %s',
-      conflict: 'Кто-то изменил %s одновременно. Попробуйте ещё раз.',
+      recentFiles: 'Недавние файлы', chatMenu: 'Меню чата', removeFile: 'Убрать %s',
+      fileGone: 'файл больше недоступен', onAgentDisk: 'файл на диске агента',
       attachFile: 'Прикрепить файл', voice: 'Голосовое сообщение', cancel: 'Отмена', recording: 'Идёт запись',
       transcribing: 'Распознаю речь…', micDenied: 'Нет доступа к микрофону.',
       voiceFailed: 'Не удалось распознать речь: %s', voiceEmpty: 'Речь не распознана.',
@@ -361,23 +365,20 @@
     en: {
       chats: 'Chats', chat: 'Chat', files: 'Files', newChat: 'New chat', close: 'Close',
       language: 'Language', send: 'Send', placeholder: 'Message',
-      searchFiles: 'Search files by name or folder',
-      drop: 'Drop a file here or choose one',
+      searchFiles: 'Search files by name',
       you: 'You', agent: 'Agent',
       noChats: 'No chats yet.', pickChat: 'Pick a chat or start a new one.',
       signInMessage: 'Sign in to the chat to see and send messages.', signIn: 'Sign in',
       unavailable: 'The chat is not available right now (HTTP %s). Try again in a minute.',
       apiError: 'Chat API %s: %s',
       working: 'Working…', usedTools: 'Tools used: %s', workingTools: 'Working… (%s)',
-      adminOnly: 'Files are for the site admin. Sign in with the button in the corner.',
       noFiles: 'No files.', fileOne: 'file', fileFew: 'files', fileMany: 'files',
-      back: 'Back', next: 'Next', usedIn: 'Used in: ', loading: 'Loading…',
-      attach: 'Attach to message', download: 'Download',
-      uploadBadExt: 'trip2g does not store .%s files. Allowed: %s',
+      attach: 'Add to message', download: 'Download',
       uploadTooBig: '%s is %s; the limit is %s.',
-      uploading: 'Uploading %s…', uploaded: 'Uploaded %s',
+      uploading: 'Uploading %s…', loading: 'Loading…',
       uploadFailed: 'Upload failed: %s',
-      conflict: 'Someone changed %s at the same time. Try again.',
+      recentFiles: 'Recent files', chatMenu: 'Chat menu', removeFile: 'Remove %s',
+      fileGone: 'file is no longer available', onAgentDisk: "file is on the agent's disk",
       attachFile: 'Attach a file', voice: 'Voice message', cancel: 'Cancel', recording: 'Recording',
       transcribing: 'Transcribing…', micDenied: 'Microphone access was denied.',
       voiceFailed: 'Could not transcribe: %s', voiceEmpty: 'No speech was recognised.',
@@ -404,6 +405,7 @@
     document.querySelectorAll('[data-i18n-label]').forEach(function (node) { node.setAttribute('aria-label', t(node.dataset.i18nLabel)) })
     document.querySelectorAll('[data-lang]').forEach(function (node) { node.setAttribute('aria-pressed', String(node.dataset.lang === lang)) })
     if (!state.sessionId) $('chat-title').textContent = t('chat')
+    renderChips()
   }
 
   function chooseLanguage(lang) {
@@ -412,7 +414,7 @@
     applyLanguage()
     loadSessions()
     if (!state.sessionId) loadMessages()
-    loadFiles()
+    renderFiles()
   }
 
   // Small DOM helper: el('p', {class: 'x'}, 'text', childNode). Text is always
@@ -460,22 +462,82 @@
     return safeHref(url)
   }
 
-  var INLINE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(!?\[[^\]\n]*\]\([^)\s]+\))|(https?:\/\/[^\s<>()]+)/g
+  var INLINE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(!?\[[^\]\n]*\]\([^)\s]+\))|(https?:\/\/[^\s<>()]+)|((?<![\w@])@[^\s"@]+)|((?:MEDIA|sandbox):[^\s<>()]+)/g
+
+  // What a message says about a file: "@name" or "@/opt/webchat-files/name" for
+  // one the person attached, "sandbox:/opt/webchat-files/out/name" or
+  // "MEDIA:/opt/webchat-files/out/name" for one the agent shows. A target is
+  // {inside: 'name under the cache'} or {outside: 'a path elsewhere on the agent's disk'}.
+  function cacheTarget(raw) {
+    var value = raw.replace(/^(@|sandbox:|MEDIA:)/, '')
+    if (value.startsWith(CACHE_DIR)) return { inside: value.slice(CACHE_DIR.length) }
+    if (value.startsWith('/')) return { outside: value }
+    return { inside: value.replace(/^\.\//, '') }
+  }
+
+  function fileReference(raw) {
+    var trailing = /[.,;:!?)\]]+$/.exec(raw)
+    var rest = trailing ? trailing[0] : ''
+    var value = raw.slice(0, raw.length - rest.length)
+    var target = cacheTarget(value)
+    var name = target.inside || target.outside
+    if (!name || !/\/|\.\w{1,8}$/.test(name)) return null
+    return { target: target, rest: rest, alt: '' }
+  }
+
+  function fileURL(name) {
+    return CHAT_API + '/api/files/' + name.split('/').map(encodeURIComponent).join('/')
+  }
+
+  function baseName(path) {
+    return path.split('/').pop()
+  }
+
+  function goneChip(name) {
+    return el('span', { class: 'chip gone', title: t('fileGone') }, el('span', { class: 'chip-name' }, name))
+  }
+
+  function fileNode(target, alt) {
+    if (target.outside) {
+      return el('span', { class: 'chip outside', title: target.outside + ' - ' + t('onAgentDisk') },
+        el('span', { class: 'chip-name' }, baseName(target.outside)))
+    }
+    var url = fileURL(target.inside)
+    var name = baseName(target.inside)
+    if (IMAGE_NAME.test(name)) {
+      var image = el('img', { class: 'inline', src: url, alt: alt || name, loading: 'lazy' })
+      image.addEventListener('error', function () { image.replaceWith(goneChip(name)) })
+      return el('a', { href: url, target: '_blank', rel: 'noopener' }, image)
+    }
+    return el('a', { class: 'chip', href: url, download: name, title: target.inside }, el('span', { class: 'chip-name' }, name))
+  }
 
   function renderInline(text) {
     var nodes = []
     var last = 0
-    text.replace(INLINE, function (match, code, bold, link, bare, offset) {
+    text.replace(INLINE, function (match, code, bold, link, bare, at, media, offset) {
       if (offset > last) nodes.push(text.slice(last, offset))
       last = offset + match.length
       if (code) { nodes.push(el('code', null, code.slice(1, -1))); return match }
       if (bold) { nodes.push(el('strong', null, bold.slice(2, -2))); return match }
+      if (at || media) {
+        var ref = fileReference(at || media)
+        if (!ref) { nodes.push(match); return match }
+        nodes.push(fileNode(ref.target, ref.alt))
+        if (ref.rest) nodes.push(ref.rest)
+        return match
+      }
       if (bare) {
         var href = safeHref(bare)
         nodes.push(href ? el('a', { href: href, target: '_blank', rel: 'noopener' }, bare) : bare)
         return match
       }
       var parts = /^(!?)\[([^\]]*)\]\(([^)]+)\)$/.exec(link)
+      if (/^(sandbox:|MEDIA:)/.test(parts[3]) || parts[3].startsWith(CACHE_DIR)) {
+        var cached = cacheTarget(parts[3])
+        nodes.push(cached ? fileNode(cached, parts[2]) : match)
+        return match
+      }
       if (parts[1]) {
         var src = safeImageSrc(parts[3])
         nodes.push(src ? el('img', { src: src, alt: parts[2] }) : match)
@@ -593,7 +655,7 @@
     return chatFetch(path, options).then(function (res) { return res.json() })
   }
 
-  var state = { sessionId: null, sending: false, uploading: 0, titles: {} }
+  var state = { sessionId: null, sending: false, uploading: 0, titles: {}, attached: [] }
 
   function signInURL() {
     return CHAT_API + '/oauth2/start?rd=' + encodeURIComponent(location.pathname)
@@ -698,11 +760,15 @@
   }
 
   function send(text) {
-    if (state.sending || state.uploading || !text.trim()) return
+    var attached = state.attached
+    if (state.sending || state.uploading || (!text.trim() && !attached.length)) return
     if (!state.sessionId) {
       newChat().then(function () { if (state.sessionId) send(text) })
       return
     }
+    text = [text.trim()].concat(attached.map(function (a) { return '@' + a.name })).filter(Boolean).join('\n')
+    state.attached = []
+    renderChips()
     state.sending = true
     $('input').value = ''
     updateComposer()
@@ -757,75 +823,39 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Files: trip2g's own asset store, through its admin GraphQL on this site.
-  // Only the site admin sees this pane; the server refuses everyone else.
+  // Files: the proxy's own cache, one folder on the agent's disk. A file is
+  // attached to a message as the token @name; the agent reads it from
+  // /opt/webchat-files/name. Old files are deleted to make room for new ones.
   // ---------------------------------------------------------------------------
 
-  function graphql(query, variables) {
-    return fetch('/_system/graphql', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: query, variables: variables }),
-    }).then(function (res) { return res.json() }).then(function (body) {
-      if (body.errors) throw new Error(body.errors[0].message)
-      return body.data
+  var files = { all: [], search: '', selected: null }
+
+  function loadFiles() {
+    return chatJSON('/api/files').then(function (body) {
+      files.all = body.files
+      renderFiles()
+    }).catch(function (err) {
+      $('file-list').replaceChildren(errorNode(err))
     })
   }
 
-  // A file upload goes as a GraphQL multipart request: operations, map, file.
-  function graphqlUpload(query, variables, file) {
-    var form = new FormData()
-    form.append('operations', JSON.stringify({ query: query, variables: variables }))
-    form.append('map', JSON.stringify({ 0: ['variables.input.file'] }))
-    form.append('0', file)
-    return fetch('/_system/graphql', { method: 'POST', credentials: 'same-origin', body: form })
-      .then(function (res) { return res.json() })
-      .then(function (body) {
-        if (body.errors) throw new Error(body.errors[0].message)
-        return body.data
-      })
-  }
-
-  var LIST_FILES = 'query ($filter: AdminLatestNoteAssetsFilter) { admin { allLatestNoteAssets(filter: $filter) {' +
-    ' totalCount nodes { id absolutePath fileName url size createdAt contentType notes { path url } } } } }'
-
-  var READ_NOTE = 'query ($paths: [String!]) { notePaths(filter: { paths: $paths }) { value content latestContentHash } }'
-
-  var PUSH_NOTE = 'mutation ($input: PushNotesInput!) { pushNotes(input: $input) { __typename' +
-    ' ... on PushNotesPayload { notes { id path } hashMismatches { path } } ... on ErrorPayload { message } } }'
-
-  var UPLOAD_FILE = 'mutation ($input: UploadNoteAssetInput!) { uploadNoteAsset(input: $input) { __typename' +
-    ' ... on UploadNoteAssetPayload { uploadSkipped } ... on ErrorPayload { message } } }'
-
-  var files = { search: '', offset: 0, total: 0, selected: null }
-
-  function loadFiles() {
-    if (!DATA.isAdmin) {
-      $('file-list').replaceChildren(el('div', { class: 'muted', style: 'padding:12px' },
-        t('adminOnly')))
-      $('drop').hidden = true
-      $('file-search').disabled = true
-      return Promise.resolve()
-    }
-    var filter = { search: files.search || null, limit: FILES_PER_PAGE, offset: files.offset }
-    return graphql(LIST_FILES, { filter: filter }).then(function (data) {
-      var result = data.admin.allLatestNoteAssets
-      files.total = result.totalCount
-      $('file-count').textContent = result.totalCount + ' ' + t(fileNoun(result.totalCount))
-      var list = $('file-list')
-      list.replaceChildren()
-      if (!result.nodes.length) list.append(el('div', { class: 'muted', style: 'padding:12px' }, 'No files.'))
-      result.nodes.forEach(function (asset) {
-        list.append(el('button', {
-          class: 'file' + (files.selected && files.selected.id === asset.id ? ' active' : ''),
-          onclick: function () { files.selected = asset; showPreview(asset); loadFiles() },
-        }, el('span', { class: 'name' }, asset.absolutePath),
-          el('span', { class: 'muted' }, asset.contentType + ' · ' + formatSize(asset.size))))
-      })
-      renderPager()
-    }).catch(function (err) {
-      $('file-list').replaceChildren(el('div', { class: 'error' }, err.message))
+  function renderFiles() {
+    var needle = files.search.toLowerCase()
+    var shown = files.all.filter(function (f) { return f.name.toLowerCase().includes(needle) })
+    $('file-count').textContent = shown.length + ' ' + t(fileNoun(shown.length))
+    var list = $('file-list')
+    list.replaceChildren()
+    if (!shown.length) list.append(el('div', { class: 'muted', style: 'padding:12px' }, t('noFiles')))
+    shown.slice(0, FILES_SHOWN).forEach(function (file) {
+      var slash = file.name.lastIndexOf('/')
+      var info = formatSize(file.size) + ' \u00B7 ' + new Date(file.modified * 1000).toLocaleDateString(currentLanguage(), { day: 'numeric', month: 'short' })
+      list.append(el('button', {
+        class: 'file' + (files.selected && files.selected.name === file.name ? ' active' : ''),
+        title: file.path,
+        onclick: function () { files.selected = file; showPreview(file); renderFiles() },
+      }, el('span', { class: 'name' }, file.name.slice(slash + 1)),
+        el('span', { class: 'meta-line muted' },
+          el('span', { class: 'dir' }, slash > 0 ? file.name.slice(0, slash + 1) : ''), el('span', { class: 'info' }, info))))
     })
   }
 
@@ -838,172 +868,69 @@
     return 'fileMany'
   }
 
-  function renderPager() {
-    var pager = $('pager')
-    pager.replaceChildren()
-    if (files.total <= FILES_PER_PAGE) return
-    var page = Math.floor(files.offset / FILES_PER_PAGE) + 1
-    var pages = Math.ceil(files.total / FILES_PER_PAGE)
-    pager.append(
-      el('button', { disabled: page === 1, onclick: function () { files.offset -= FILES_PER_PAGE; loadFiles() } }, t('back')),
-      el('span', { class: 'muted' }, page + ' / ' + pages),
-      el('button', { disabled: page === pages, onclick: function () { files.offset += FILES_PER_PAGE; loadFiles() } }, t('next')))
-  }
-
-  function absoluteURL(url) {
-    return new URL(url, location.origin).href
-  }
-
-  function showPreview(asset) {
+  function showPreview(file) {
     var box = $('preview')
+    var url = fileURL(file.name)
     box.hidden = false
-    box.replaceChildren(el('strong', null, asset.fileName),
-      el('div', { class: 'muted' }, asset.absolutePath + ' · ' + asset.contentType + ' · ' + formatSize(asset.size)))
-
-    // The type comes from the server's MIME table, which differs between hosts
-    // (.webm is audio/webm on some), so video is also recognised by extension.
-    var type = asset.contentType
-    var isVideo = type.startsWith('video/') || /\.(mp4|webm|mov|m4v|mkv)$/i.test(asset.fileName)
-    if (type.startsWith('image/')) box.append(el('img', { src: asset.url, alt: asset.fileName }))
-    else if (isVideo) box.append(el('video', { src: asset.url, controls: true, preload: 'metadata' }))
-    else if (type.startsWith('audio/')) box.append(el('audio', { src: asset.url, controls: true }))
-    else if (type === 'application/pdf') box.append(el('iframe', { src: asset.url, title: asset.fileName }))
-    else if (type.startsWith('text/') || type.includes('json')) {
-      var pre = el('pre', null, t('loading'))
-      box.append(pre)
-      fetch(asset.url, { credentials: 'same-origin', headers: { Range: 'bytes=0-' + (TEXT_PREVIEW_BYTES - 1) } })
-        .then(function (res) { return res.text() })
-        .then(function (text) { pre.textContent = text })
-        .catch(function (err) { pre.textContent = err.message })
-    }
-
-    if (asset.notes.length) {
-      box.append(el('div', { class: 'muted' }, 'Used in: ',
-        asset.notes.map(function (n, i) { return [i ? ', ' : '', el('a', { href: n.url, target: '_blank' }, n.path)] })))
-    }
-
+    box.replaceChildren(el('strong', null, baseName(file.name)),
+      el('div', { class: 'muted' }, file.path + ' \u00B7 ' + formatSize(file.size)))
+    if (IMAGE_NAME.test(file.name)) box.append(el('img', { src: url, alt: file.name }))
     box.append(el('div', { class: 'actions' },
-      el('button', { class: 'primary', onclick: function () { attach(asset) } }, t('attach')),
-      el('a', { href: asset.url, target: '_blank', download: asset.fileName }, t('download'))))
+      el('button', { class: 'primary', onclick: function () { attachExisting(file) } }, t('attach')),
+      el('a', { href: url, download: baseName(file.name) }, t('download'))))
   }
 
-  // What the agent reads: a link it can fetch and where the file sits in the
-  // vault it shares with this site.
-  function attachmentText(asset) {
-    var used = asset.notes.map(function (n) { return n.path }).join(', ')
-    return '[file: ' + asset.fileName + '](' + absoluteURL(asset.url) + ')\n' +
-      '(trip2g vault file ' + asset.absolutePath + ', ' + asset.contentType + ', ' + formatSize(asset.size) +
-      (used ? ', referenced by ' + used : '') + ')'
-  }
-
-  function attach(asset) {
-    var input = $('input')
-    var before = input.value.slice(0, input.selectionStart)
-    var after = input.value.slice(input.selectionEnd)
-    var block = (before && !before.endsWith('\n') ? '\n' : '') + attachmentText(asset) + '\n'
-    input.value = before + block + after
-    input.focus()
-    growInput()
+  function attachExisting(file) {
+    addAttachment(file)
+    $('input').focus()
+    setFilesOpen(false)
     setTab('chat')
   }
 
-  // ---------------------------------------------------------------------------
-  // Upload: add the file to the hidden note uploads/_files.md, then send the
-  // bytes for that note version. That is how trip2g's own sync uploads files.
-  // ---------------------------------------------------------------------------
-
-  function uploadStatus(text, isError) {
-    var status = $('upload-status')
-    status.textContent = text
-    status.className = isError ? 'error' : 'muted'
+  function addAttachment(file) {
+    if (!state.attached.some(function (a) { return a.name === file.name })) state.attached.push({ name: file.name })
+    renderChips()
+    growInput()
   }
 
-  function sha256Hex(file) {
-    return file.arrayBuffer().then(function (buffer) { return crypto.subtle.digest('SHA-256', buffer) }).then(function (digest) {
-      return Array.from(new Uint8Array(digest)).map(function (b) { return b.toString(16).padStart(2, '0') }).join('')
-    })
+  function renderChips() {
+    $('chips').replaceChildren.apply($('chips'), state.attached.map(function (a) {
+      var remove = el('button', { type: 'button', class: 'chip-remove', 'aria-label': t('removeFile', baseName(a.name)) }, '\u00D7')
+      remove.addEventListener('click', function () {
+        state.attached = state.attached.filter(function (x) { return x !== a })
+        renderChips()
+        growInput()
+        $('input').focus()
+      })
+      return el('span', { class: 'chip', title: '@' + a.name }, el('span', { class: 'chip-name' }, baseName(a.name)), remove)
+    }))
+    updateComposer()
   }
 
-  // Characters a wikilink cannot carry become "_"; a taken name gets -2, -3 …
-  function freeName(original, taken) {
-    var clean = original.replace(/[\[\]|#^\n\r]/g, '_')
-    var dot = clean.lastIndexOf('.')
-    var stem = dot > 0 ? clean.slice(0, dot) : clean
-    var ext = dot > 0 ? clean.slice(dot) : ''
-    var name = clean
-    for (var n = 2; taken.has(name.toLowerCase()); n++) name = stem + '-' + n + ext
-    return name
-  }
-
-  // Stores a file the way trip2g's sync does and resolves to the stored asset,
-  // or to null after saying why through report(text, isError).
+  // Stores a file in the proxy's cache; resolves to its entry, or to null
+  // after saying why through report(text, isError).
   function storeFile(file, report) {
-    var ext = (file.name.split('.').pop() || '').toLowerCase()
-    if (!UPLOAD_EXTENSIONS.includes(ext)) {
-      report(t('uploadBadExt', ext, UPLOAD_EXTENSIONS.join(', ')), true)
-      return Promise.resolve(null)
-    }
     if (file.size > MAX_UPLOAD_BYTES) {
       report(t('uploadTooBig', file.name, formatSize(file.size), formatSize(MAX_UPLOAD_BYTES)), true)
       return Promise.resolve(null)
     }
-
     report(t('uploading', file.name))
-    var prefix = '/' + UPLOAD_FOLDER + '/'
-    var name, versionId
-
-    return Promise.all([
-      graphql(READ_NOTE, { paths: [CONTAINER_NOTE] }),
-      graphql(LIST_FILES, { filter: { pathPrefix: prefix } }),
-      sha256Hex(file),
-    ]).then(function ([noteData, listData, hash]) {
-      var note = noteData.notePaths[0]
-      var taken = new Set(listData.admin.allLatestNoteAssets.nodes.map(function (a) { return a.absolutePath.slice(prefix.length).toLowerCase() }))
-      name = freeName(file.name, taken)
-      var content = note ? note.content.replace(/\n*$/, '\n') : '---\nfree: false\n---\nFiles uploaded from the chat page.\n'
-      var push = {
-        updates: [{ path: CONTAINER_NOTE, content: content + '![[' + name + ']]\n', expectedHash: note ? note.latestContentHash : '' }],
-      }
-      return graphql(PUSH_NOTE, { input: push }).then(function (data) {
-        var result = data.pushNotes
-        if (result.__typename === 'ErrorPayload') throw new Error(result.message)
-        if (result.hashMismatches.length) throw new Error(t('conflict', CONTAINER_NOTE))
-        // notes lists every note the push touched or re-indexed; take ours.
-        versionId = result.notes.find(function (n) { return n.path === CONTAINER_NOTE }).id
-        var upload = { file: null, noteId: versionId, sha256Hash: hash, path: name, absolutePath: prefix + name }
-        return graphqlUpload(UPLOAD_FILE, { input: upload }, file)
-      })
-    }).then(function (data) {
-      var result = data.uploadNoteAsset
-      if (result.__typename === 'ErrorPayload') throw new Error(result.message)
-      report(t('uploaded', prefix + name))
-      return graphql(LIST_FILES, { filter: { pathPrefix: prefix + name, limit: 1 } })
-    }).then(function (data) {
-      return data.admin.allLatestNoteAssets.nodes[0] || null
+    var form = new FormData()
+    form.append('file', file, file.name)
+    return chatJSON('/api/files', { method: 'POST', body: form }).then(function (entry) {
+      return entry
     }).catch(function (err) {
       report(t('uploadFailed', err.message), true)
       return null
     })
   }
 
-  function uploadFile(file) {
-    return storeFile(file, uploadStatus).then(function (asset) {
-      if (!asset) return
-      files.search = ''
-      files.offset = 0
-      $('file-search').value = ''
-      files.selected = asset
-      showPreview(asset)
-      return loadFiles()
-    })
-  }
-
   // ---------------------------------------------------------------------------
   // The message box: a paperclip, a dropped or pasted file, and voice. A file
-  // is stored like any other upload and its attachment text lands in the
-  // message being typed. A voice message is transcribed by the proxy
+  // goes to the proxy's cache and shows as a chip; the message carries its
+  // @name. A voice message is transcribed by the proxy
   // (POST <prefix>/api/transcribe) and goes as text, with the recording kept
-  // as a file the agent can open.
+  // in the cache for the agent to open.
   // ---------------------------------------------------------------------------
 
   var VOICE_MAX_SECONDS = 5 * 60
@@ -1024,7 +951,7 @@
   // Send shows for a message with text; the microphone takes its place while
   // the box is empty, like Telegram.
   function updateComposer() {
-    var empty = !$('input').value.trim()
+    var empty = !$('input').value.trim() && !state.attached.length
     var busy = state.sending || state.uploading > 0
     var micShown = voice.available && empty
     $('mic').hidden = !micShown
@@ -1038,9 +965,9 @@
     state.uploading++
     updateComposer()
     var report = function (text, isError) { if (isError) composerStatus(text, true); else composerBusy(text) }
-    return storeFile(file, report).then(function (asset) {
-      if (asset) { composerStatus(''); attach(asset); loadFiles() }
-      return asset
+    return storeFile(file, report).then(function (entry) {
+      if (entry) { composerStatus(''); addAttachment(entry); loadFiles() }
+      return entry
     }).finally(function () {
       state.uploading--
       updateComposer()
@@ -1128,12 +1055,12 @@
     var errorsOnly = function (text, isError) { if (isError) composerStatus(text, true) }
     Promise.all([
       transcribe(blob, fileName),
-      DATA.isAdmin ? storeFile(file, errorsOnly) : Promise.resolve(null),
-    ]).then(function ([text, asset]) {
+      storeFile(file, errorsOnly),
+    ]).then(function ([text, entry]) {
       if (!text) { composerStatus(t('voiceEmpty'), true); return null }
       if (!$('composer-status').classList.contains('failed')) composerStatus('')
-      if (asset) loadFiles()
-      return VOICE_MARKER + text + (asset ? '\n' + attachmentText(asset) : '')
+      if (entry) loadFiles()
+      return VOICE_MARKER + text + (entry ? '\n@' + entry.name : '')
     }).catch(function (err) {
       composerStatus(t('voiceFailed', err.message), true)
       return null
@@ -1153,10 +1080,24 @@
     $('app').dataset.tab = tab
   }
 
+  var narrow = window.matchMedia('(max-width: 860px)')
+
+  function setFilesOpen(open) {
+    $('app').dataset.files = open ? 'open' : 'closed'
+    if (narrow.matches) setTab(open ? 'files' : 'chat')
+    if (open) loadFiles()
+  }
+
+  function setMenuOpen(open) {
+    $('chat-menu-pop').hidden = !open
+    $('chat-menu').setAttribute('aria-expanded', String(open))
+  }
+
   function growInput() {
     var input = $('input')
     input.style.height = 'auto'
-    input.style.height = Math.min(input.scrollHeight + 2, window.innerHeight * 0.4) + 'px'
+    var eightLines = parseFloat(getComputedStyle(input).lineHeight) * 8 + 22
+    input.style.height = Math.min(input.scrollHeight + 2, eightLines) + 'px'
     updateComposer()
   }
 
@@ -1167,10 +1108,18 @@
   }
 
   $('open-sessions').addEventListener('click', function () { setTab('sessions') })
-  $('open-files').addEventListener('click', function () { setTab('files') })
-  $('scrim').addEventListener('click', function () { setTab('chat') })
+  $('chat-menu').addEventListener('click', function (e) { e.stopPropagation(); setMenuOpen($('chat-menu-pop').hidden) })
+  $('menu-files').addEventListener('click', function () { setMenuOpen(false); setFilesOpen(true) })
+  document.querySelectorAll('[data-close-files]').forEach(function (b) { b.addEventListener('click', function () { setFilesOpen(false) }) })
+  document.addEventListener('click', function (e) { if (!$('chat-menu-pop').contains(e.target)) setMenuOpen(false) })
+  $('scrim').addEventListener('click', function () { setTab('chat'); $('app').dataset.files = 'closed' })
   document.querySelectorAll('[data-close]').forEach(function (b) { b.addEventListener('click', function () { setTab('chat') }) })
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setTab('chat') })
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return
+    setMenuOpen(false)
+    setTab('chat')
+    $('app').dataset.files = 'closed'
+  })
   document.querySelectorAll('[data-lang]').forEach(function (b) {
     b.addEventListener('click', function () { chooseLanguage(b.dataset.lang) })
   })
@@ -1181,7 +1130,6 @@
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send($('input').value); growInput() }
   })
 
-  if (!DATA.isAdmin) $('attach-file').hidden = true
   $('attach-file').addEventListener('click', function () { $('composer-file').click() })
   $('composer-file').addEventListener('change', function (e) {
     if (e.target.files[0]) attachToComposer(e.target.files[0])
@@ -1189,20 +1137,20 @@
   })
   $('input').addEventListener('paste', function (e) {
     var pasted = e.clipboardData && e.clipboardData.files[0]
-    if (!pasted || !DATA.isAdmin) return
+    if (!pasted) return
     e.preventDefault()
     attachToComposer(pasted)
   })
   var composerBox = $('composer-box')
   composerBox.addEventListener('dragover', function (e) {
-    if (!DATA.isAdmin || !Array.from(e.dataTransfer.types).includes('Files')) return
+    if (!Array.from(e.dataTransfer.types).includes('Files')) return
     e.preventDefault()
     composerBox.classList.add('over')
   })
   composerBox.addEventListener('dragleave', function () { composerBox.classList.remove('over') })
   composerBox.addEventListener('drop', function (e) {
     composerBox.classList.remove('over')
-    if (!DATA.isAdmin || !e.dataTransfer.files[0]) return
+    if (!e.dataTransfer.files[0]) return
     e.preventDefault()
     attachToComposer(e.dataTransfer.files[0])
   })
@@ -1210,30 +1158,13 @@
   $('rec-cancel').addEventListener('click', function () { stopRecording(false) })
   $('rec-send').addEventListener('click', function () { stopRecording(true) })
 
-  var searchTimer
-  $('file-search').addEventListener('input', function (e) {
-    clearTimeout(searchTimer)
-    searchTimer = setTimeout(function () { files.search = e.target.value.trim(); files.offset = 0; loadFiles() }, 250)
-  })
-  $('file-input').addEventListener('change', function (e) {
-    if (e.target.files[0]) uploadFile(e.target.files[0])
-    e.target.value = ''
-  })
-  var drop = $('drop')
-  drop.addEventListener('dragover', function (e) { e.preventDefault(); drop.classList.add('over') })
-  drop.addEventListener('dragleave', function () { drop.classList.remove('over') })
-  drop.addEventListener('drop', function (e) {
-    e.preventDefault()
-    drop.classList.remove('over')
-    if (e.dataTransfer.files[0]) uploadFile(e.dataTransfer.files[0])
-  })
+  $('file-search').addEventListener('input', function (e) { files.search = e.target.value.trim(); renderFiles() })
 
   window.addEventListener('hashchange', openFromHash)
   applyLanguage()
   updateComposer()
   probeVoice()
   openFromHash()
-  loadFiles()
 })()
 </script>
 </body>
