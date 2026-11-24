@@ -1039,7 +1039,7 @@
     updateComposer()
     var report = function (text, isError) { if (isError) composerStatus(text, true); else composerBusy(text) }
     return storeFile(file, report).then(function (asset) {
-      if (asset) { composerStatus(''); attach(asset) }
+      if (asset) { composerStatus(''); attach(asset); loadFiles() }
       return asset
     }).finally(function () {
       state.uploading--
@@ -1132,6 +1132,7 @@
     ]).then(function ([text, asset]) {
       if (!text) { composerStatus(t('voiceEmpty'), true); return null }
       if (!$('composer-status').classList.contains('failed')) composerStatus('')
+      if (asset) loadFiles()
       return VOICE_MARKER + text + (asset ? '\n' + attachmentText(asset) : '')
     }).catch(function (err) {
       composerStatus(t('voiceFailed', err.message), true)
