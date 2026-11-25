@@ -135,7 +135,10 @@
   .msg blockquote { margin: 0 0 8px; padding: 2px 12px; border-left: 3px solid var(--line); color: var(--muted); }
   .msg hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
   .msg .katex-display { overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
-  .msg .mermaid-block { overflow-x: auto; margin: 0 0 8px; }
+  .msg .mermaid-block { overflow-x: auto; margin: 0 0 8px; cursor: zoom-in; }
+  .msg .mermaid-block svg { max-width: 100%; height: auto; }
+  .table-wrap table { width: max-content; min-width: 100%; }
+  .lightbox { position: fixed; inset: 0; z-index: 60; overflow: auto; background: var(--panel); padding: 16px; cursor: zoom-out; }
   :root, :root[data-theme="light"] { --hl-key: #a626a4; --hl-str: #2a7a3b; --hl-num: #b25800; --hl-com: #8a8a95; --hl-fn: #2f6fed; --hl-attr: #b0443a; }
   :root[data-theme="dark"] { --hl-key: #d7a1f5; --hl-str: #9fd88f; --hl-num: #f2b46d; --hl-com: #7c7c88; --hl-fn: #82aaff; --hl-attr: #ee8f86; }
   .hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-type, .hljs-doctag { color: var(--hl-key); }
@@ -416,7 +419,7 @@
       uploadTooBig: '%s весит %s, предел %s.',
       uploading: 'Загружаю %s…', loading: 'Загрузка…',
       uploadFailed: 'Не удалось загрузить: %s',
-      renameChat: 'Переименовать чат', rename: 'Переименовать', copy: 'Копировать', copied: 'Скопировано',
+      openFull: 'Открыть схему целиком', renameChat: 'Переименовать чат', rename: 'Переименовать', copy: 'Копировать', copied: 'Скопировано',
       stop: 'Остановить', stopped: 'Показ остановлен — агент может дописать в фоне',
       queued: 'в очереди', unqueue: 'Убрать из очереди', telegramNote: 'ответ придёт сюда, не в Telegram',
       recentFiles: 'Недавние файлы', chatMenu: 'Меню чата', removeFile: 'Убрать %s',
@@ -441,7 +444,7 @@
       uploadTooBig: '%s is %s; the limit is %s.',
       uploading: 'Uploading %s…', loading: 'Loading…',
       uploadFailed: 'Upload failed: %s',
-      renameChat: 'Rename chat', rename: 'Rename', copy: 'Copy', copied: 'Copied',
+      openFull: 'Open the diagram full size', renameChat: 'Rename chat', rename: 'Rename', copy: 'Copy', copied: 'Copied',
       stop: 'Stop', stopped: 'Display stopped — the agent may still finish in the background',
       queued: 'queued', unqueue: 'Remove from queue', telegramNote: 'the reply comes here, not to Telegram',
       recentFiles: 'Recent files', chatMenu: 'Chat menu', removeFile: 'Remove %s',
@@ -564,7 +567,11 @@
     return el('span', { class: 'chip gone', title: t('fileGone') }, el('span', { class: 'chip-name' }, name))
   }
 
-  function fileNode(target, alt) {
+  function fileNode(target, alt, seen) {
+    if (seen && target.inside) {
+      if (seen.has(target.inside)) return null
+      seen.add(target.inside)
+    }
     if (target.outside) {
       return el('span', { class: 'chip outside', title: target.outside + ' - ' + t('onAgentDisk') },
         el('span', { class: 'chip-name' }, baseName(target.outside)))
@@ -576,7 +583,7 @@
       image.addEventListener('error', function () { image.replaceWith(goneChip(name)) })
       return el('a', { href: url, target: '_blank', rel: 'noopener' }, image)
     }
-    return el('a', { class: 'chip', href: url, download: name, title: target.inside }, el('span', { class: 'chip-name' }, name))
+    return el('a', { class: 'chip', href: url, download: name, title: target.inside }, el('span', { class: 'chip-name' }, '@' + name))
   }
 
   function renderInline(text) {
@@ -769,7 +776,7 @@
     return node
   }
 
-  function enhanceText(node, math) {
+  function enhanceText(node, math, seen) {
     var text = node.nodeValue
     var out = []
     var last = 0
@@ -778,7 +785,8 @@
       if (index !== undefined) replacement = mathNode(math[Number(index)])
       else {
         var ref = fileReference(match)
-        if (ref) replacement = [fileNode(ref.target, ''), ref.rest]
+        var shown = ref ? fileNode(ref.target, '', seen) : null
+        if (ref) replacement = shown ? [shown, ref.rest] : [ref.rest]
       }
       if (!replacement) return match
       if (offset > last) out.push(text.slice(last, offset))
@@ -791,6 +799,28 @@
     node.replaceWith.apply(node, out.flat().filter(function (part) { return part !== '' }))
   }
 
+  // A tap on a diagram shows it at its natural size over the page; a tap or Esc closes it.
+  function openFullSize(drawing) {
+    var copy = drawing.cloneNode(true)
+    var width = drawing.viewBox.baseVal.width
+    copy.style.maxWidth = 'none'
+    copy.style.height = 'auto'
+    if (width) copy.style.width = width + 'px'
+    var layer = el('div', { class: 'lightbox', role: 'dialog', 'aria-label': t('openFull') }, copy)
+    function close() {
+      layer.remove()
+      document.removeEventListener('keydown', onKey, true)
+    }
+    function onKey(e) {
+      if (e.key !== 'Escape') return
+      e.stopPropagation()
+      close()
+    }
+    layer.addEventListener('click', close)
+    document.addEventListener('keydown', onKey, true)
+    document.body.append(layer)
+  }
+
   function mermaidBlock(code) {
     var source = code.textContent
     var block = el('div', { class: 'mermaid-block' })
@@ -801,29 +831,31 @@
     }).then(function (result) {
       var svg = window.DOMPurify.sanitize(result.svg, { USE_PROFILES: { svg: true, svgFilters: true }, ADD_TAGS: ['style'], FORCE_BODY: true })
       block.innerHTML = svg
-      var drawing = block.querySelector('svg')
-      if (drawing && drawing.viewBox.baseVal.width) {
-        drawing.style.maxWidth = 'none'
-        drawing.style.width = drawing.viewBox.baseVal.width + 'px'
-        drawing.style.height = drawing.viewBox.baseVal.height + 'px'
-      }
+      block.title = t('openFull')
+      block.addEventListener('click', function () { openFullSize(block.querySelector('svg')) })
     }).catch(function () {})
   }
 
+  function replaceOnce(node, replacement) {
+    if (replacement) node.replaceWith(replacement)
+    else node.remove()
+  }
+
   function enhance(root, math, final) {
+    var seen = new Set()
     var texts = []
     var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
     while (walker.nextNode()) {
       if (!walker.currentNode.parentElement || !walker.currentNode.parentElement.closest('pre, code, a')) texts.push(walker.currentNode)
     }
-    texts.forEach(function (node) { enhanceText(node, math) })
+    texts.forEach(function (node) { enhanceText(node, math, seen) })
     root.querySelectorAll('a[href]').forEach(function (a) {
       var href = a.getAttribute('href')
-      if (/^(sandbox:|MEDIA:)/i.test(href) || href.startsWith(CACHE_DIR)) a.replaceWith(fileNode(cacheTarget(href), a.textContent))
+      if (/^(sandbox:|MEDIA:)/i.test(href) || href.startsWith(CACHE_DIR)) replaceOnce(a, fileNode(cacheTarget(href), a.textContent, seen))
     })
     root.querySelectorAll('img[src]').forEach(function (img) {
       var src = img.getAttribute('src')
-      if (/^(sandbox:|MEDIA:)/i.test(src) || src.startsWith(CACHE_DIR)) img.replaceWith(fileNode(cacheTarget(src), img.alt))
+      if (/^(sandbox:|MEDIA:)/i.test(src) || src.startsWith(CACHE_DIR)) replaceOnce(img, fileNode(cacheTarget(src), img.alt, seen))
     })
     root.querySelectorAll('table').forEach(function (table) {
       table.replaceWith(el('div', { class: 'table-wrap' }, table.cloneNode(true)))
@@ -1161,8 +1193,7 @@
     if (state.sending || !state.queue.length) return
     var item = state.queue.shift()
     writeQueue()
-    item.node.classList.remove('queued')
-    item.node.querySelector('.queue-tag').remove()
+    item.node.remove()
     deliver(item.text, null)
   }
 
@@ -1348,7 +1379,7 @@
         growInput()
         $('input').focus()
       })
-      return el('span', { class: 'chip', title: '@' + a.name }, el('span', { class: 'chip-name' }, baseName(a.name)), remove)
+      return el('span', { class: 'chip', title: '@' + a.name }, el('span', { class: 'chip-name' }, '@' + baseName(a.name)), remove)
     }))
     updateComposer()
   }
