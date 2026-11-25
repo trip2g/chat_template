@@ -64,8 +64,9 @@ markup, styles and a plain script, no build step. Edit it in place and sync.
 
 ## A file attached to a message, and a file the agent shows
 
-A message carries `@report.pdf` for the file `/opt/webchat-files/report.pdf` on
-the agent's disk. The agent shows a file by copying it into
+A message carries `@3fa91c2e/report.pdf` for the file
+`/opt/webchat-files/3fa91c2e/report.pdf` on the agent's disk (every upload gets a
+folder of its own; the chip shows just `report.pdf`). The agent shows a file by copying it into
 `/opt/webchat-files/out/` and linking it as
 `[chart](sandbox:/opt/webchat-files/out/chart.png)`. The page turns `@name`,
 `@/opt/webchat-files/…`, `sandbox:/opt/webchat-files/…` and

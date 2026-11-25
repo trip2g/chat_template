@@ -10,7 +10,7 @@ file explorer over the site's own stored files.
   **Right** – files: search, preview (image, video, audio, PDF, text), upload,
   and "Attach to message", which puts the file's link and its vault path into
   the message.
-- **Message box** – a paperclip (or a dropped or pasted file) attaches a file to the message as a chip; the message carries its name as `@name`. With the box empty, a microphone records a voice message that goes as transcribed text with the recording's `@name`.
+- **Message box** – a paperclip (or a dropped or pasted file) attaches a file to the message as a chip; the message carries its path as `@<folder>/<name>` and the chip shows the name. With the box empty, a microphone records a voice message that goes as transcribed text with the recording's token.
 - **While the agent answers** – Stop ends only the display (the agent may finish in the background; the page says so); messages typed meanwhile wait in a per-chat queue kept in this browser and go one by one when the turn ends. Under an answer: a copy button and a small gear that lists the tools used.
 - **Files in answers** – `@name`, `@/opt/webchat-files/name`, `sandbox:/opt/webchat-files/…` and `MEDIA:/opt/webchat-files/…` become chips (pictures show inline); a path outside that folder is a muted chip.
 - One HTML file, plain JavaScript and CSS, no build step and no external
@@ -79,7 +79,16 @@ the page reads the answers:
 Everyone who can open the page and pass the proxy sees every session the API
 lists. Restrict that in the proxy if you need to.
 
-### 2. Files, through the same proxy
+### 2. Libraries and files, through the same proxy
+
+Answers are rendered with marked and DOMPurify, code with highlight.js; KaTeX
+and mermaid load only when an answer has math or a mermaid block. All of them
+come from the proxy, not from a CDN: `GET <prefix>/static/manifest.json` answers
+`{ "marked": "marked@18.3.0.js", … }` (roles `marked`, `dompurify`, `highlight`,
+`katex`, `katex.css`, `mermaid`) and `GET <prefix>/static/<file>` serves each file
+with a long immutable cache. If the list cannot be read the page falls back to a
+plain renderer.
+
 
 Attached files and the files an agent shows live in one folder the proxy keeps
 (on the agent's disk, `/opt/webchat-files`); the page never talks to the
@@ -88,11 +97,12 @@ site's own file store.
 | Method and path (after the prefix) | Request | Response |
 |---|---|---|
 | `GET /api/files` | – | `{ "files": [{ "name", "path", "size", "modified" }] }`, newest first; `name` may carry a folder (`out/chart.png`) |
-| `POST /api/files` | multipart form, one file in `file`, at most 10 MB | `{ "name", "path", "size", "modified" }`; a taken name gets `-2`, a name never has spaces |
+| `POST /api/files` | multipart form, one file in `file`, at most 10 MB | `{ "name", "path", "size", "modified" }`; a name never has spaces; the answer's `name` is `<folder>/<name>` |
 | `GET /api/files/{name}` | – | the file's bytes; 404 once it was deleted to make room |
 
-The message carries a file as `@name` (the file `/opt/webchat-files/name` on
-the agent's disk); the agent shows a file by copying it into
+The message carries a file as `@<folder>/<name>` (the file
+`/opt/webchat-files/<folder>/<name>` on the agent's disk; every upload gets a
+folder of its own, so a name is never reused and an old link never shows another file); the agent shows a file by copying it into
 `/opt/webchat-files/out/` and linking `sandbox:/opt/webchat-files/out/name`.
 
 The sign-in button in the corner is trip2g's own
