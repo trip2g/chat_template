@@ -136,7 +136,6 @@
   .msg hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
   .msg .katex-display { overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
   .msg .mermaid-block { overflow-x: auto; margin: 0 0 8px; }
-  .msg .mermaid-block svg { max-width: 100%; height: auto; }
   :root, :root[data-theme="light"] { --hl-key: #a626a4; --hl-str: #2a7a3b; --hl-num: #b25800; --hl-com: #8a8a95; --hl-fn: #2f6fed; --hl-attr: #b0443a; }
   :root[data-theme="dark"] { --hl-key: #d7a1f5; --hl-str: #9fd88f; --hl-num: #f2b46d; --hl-com: #7c7c88; --hl-fn: #82aaff; --hl-attr: #ee8f86; }
   .hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-type, .hljs-doctag { color: var(--hl-key); }
@@ -802,6 +801,12 @@
     }).then(function (result) {
       var svg = window.DOMPurify.sanitize(result.svg, { USE_PROFILES: { svg: true, svgFilters: true }, ADD_TAGS: ['style'], FORCE_BODY: true })
       block.innerHTML = svg
+      var drawing = block.querySelector('svg')
+      if (drawing && drawing.viewBox.baseVal.width) {
+        drawing.style.maxWidth = 'none'
+        drawing.style.width = drawing.viewBox.baseVal.width + 'px'
+        drawing.style.height = drawing.viewBox.baseVal.height + 'px'
+      }
     }).catch(function () {})
   }
 
