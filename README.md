@@ -119,3 +119,15 @@ attach) to the code. Two rules:
   followed by a star, outside the three template calls already there.
 - Never put text from a message or a file name into `innerHTML`. The page runs
   with the admin's session; use the `el(...)` helper or `textContent`.
+
+## Tests
+
+`tests/page.test.mjs` loads the real layout in jsdom with a stubbed API and the
+libraries the proxy serves, and renders injection payloads (raw HTML, styles, forms,
+remote pictures, `..` in file paths). Run it with jsdom 24 and the library directory
+of the proxy:
+
+```sh
+LIBS_DIR=<webchatproxy>/internal/static/files NODE_PATH=<dir with jsdom@24>/node_modules \
+  node --test tests/page.test.mjs
+```

@@ -136,7 +136,7 @@
   .msg hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
   .msg .katex-display { overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
   .msg .mermaid-block { overflow-x: auto; margin: 0 0 8px; cursor: zoom-in; }
-  .msg .mermaid-block svg { max-width: 100%; height: auto; }
+  .msg .mermaid-block img { max-width: 100%; height: auto; display: block; }
   .table-wrap table { width: max-content; min-width: 100%; }
   .lightbox { position: fixed; inset: 0; z-index: 60; overflow: auto; background: var(--panel); padding: 16px; cursor: zoom-out; }
   :root, :root[data-theme="light"] { --hl-key: #a626a4; --hl-str: #2a7a3b; --hl-num: #b25800; --hl-com: #8a8a95; --hl-fn: #2f6fed; --hl-attr: #b0443a; }
@@ -527,9 +527,13 @@
     return null
   }
 
+  // A picture loads by itself, so only the proxy's file route and data: images
+  // are shown; any other address is a link the person chooses to open.
   function safeImageSrc(url) {
     if (/^data:image\/(png|jpe?g|gif|webp);/i.test(url)) return url
-    return safeHref(url)
+    var prefix = CHAT_API + '/api/files/'
+    if (url.startsWith(prefix) && safeInside(url.slice(prefix.length))) return url
+    return null
   }
 
   var INLINE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(!?\[[^\]\n]*\]\([^)\s]+\))|(https?:\/\/[^\s<>()]+)|((?<![\w@])@[^\s"@]+)|((?:MEDIA|sandbox):[^\s<>()]+)/g
@@ -540,9 +544,16 @@
   // {inside: 'name under the cache'} or {outside: 'a path elsewhere on the agent's disk'}.
   function cacheTarget(raw) {
     var value = raw.replace(/^(@|sandbox:|MEDIA:)/, '')
-    if (value.startsWith(CACHE_DIR)) return { inside: value.slice(CACHE_DIR.length) }
+    if (value.startsWith(CACHE_DIR)) return safeInside(value.slice(CACHE_DIR.length)) ? { inside: value.slice(CACHE_DIR.length) } : { outside: value }
     if (value.startsWith('/')) return { outside: value }
-    return { inside: value.replace(/^\.\//, '') }
+    return safeInside(value) ? { inside: value } : { outside: value }
+  }
+
+  // A path in the cache is plain names between single slashes: no "..", no ".",
+  // no backslash, no control character, no escaped separator or dot.
+  function safeInside(path) {
+    if (!path || /[\\\u0000-\u001f]|%2e|%2f|%5c|%00/i.test(path)) return false
+    return path.split('/').every(function (part) { return part !== '' && part !== '.' && part !== '..' })
   }
 
   function fileReference(raw) {
@@ -730,6 +741,43 @@
 
   var LINK_PATTERN = /^(?:(?:https?|mailto|sandbox|media):|data:image\/(?:png|jpe?g|gif|webp);|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
 
+  function escapeHTML(text) {
+    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  }
+
+  // What markdown produces and nothing that styles the page or submits a form.
+  // Raw HTML in a message is shown as text, never parsed (the marked renderer
+  // above), and this list is the second wall behind it.
+  var PURIFY = {
+    ALLOWED_TAGS: ['p', 'br', 'hr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'strong', 'em', 'del', 'code', 'pre', 'blockquote',
+      'ul', 'ol', 'li', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td'],
+    ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'align', 'class', 'start'],
+    ALLOW_DATA_ATTR: false,
+    ALLOW_ARIA_ATTR: false,
+    ALLOWED_URI_REGEXP: null,
+    RETURN_DOM_FRAGMENT: true,
+  }
+
+  // A link opens in a new tab; a class survives only as the language of a code
+  // block; a picture keeps its address only when it is a data: image, and every
+  // other address waits in data-src so nothing is fetched before the page decides.
+  function keepMarkdownOnly(node) {
+    if (node.tagName === 'A') {
+      node.setAttribute('target', '_blank')
+      node.setAttribute('rel', 'noopener noreferrer')
+    }
+    if (node.hasAttribute('class') && !(node.tagName === 'CODE' && /^language-[\w-]+$/.test(node.getAttribute('class')))) {
+      node.removeAttribute('class')
+    }
+    if (node.tagName === 'IMG') {
+      var src = node.getAttribute('src') || ''
+      if (!/^data:image\/(png|jpe?g|gif|webp);/i.test(src)) {
+        node.removeAttribute('src')
+        node.setAttribute('data-src', src)
+      }
+    }
+  }
+
   function loadLibs() {
     return fetch(CHAT_API + '/static/manifest.json', { credentials: 'same-origin' }).then(function (res) {
       if (!res.ok) throw new Error('static ' + res.status)
@@ -738,12 +786,8 @@
       libs.names = names
       return Promise.all([loadScript('marked'), loadScript('dompurify'), loadScript('highlight')])
     }).then(function () {
-      window.DOMPurify.addHook('afterSanitizeAttributes', function (node) {
-        if (node.tagName === 'A') {
-          node.setAttribute('target', '_blank')
-          node.setAttribute('rel', 'noopener noreferrer')
-        }
-      })
+      window.marked.use({ renderer: { html: function (token) { return escapeHTML(typeof token === 'string' ? token : token.text) } } })
+      window.DOMPurify.addHook('afterSanitizeAttributes', keepMarkdownOnly)
       libs.ready = true
       document.documentElement.setAttribute('data-rich', '')
     }).catch(function () {})
@@ -802,10 +846,9 @@
   // A tap on a diagram shows it at its natural size over the page; a tap or Esc closes it.
   function openFullSize(drawing) {
     var copy = drawing.cloneNode(true)
-    var width = drawing.viewBox.baseVal.width
     copy.style.maxWidth = 'none'
     copy.style.height = 'auto'
-    if (width) copy.style.width = width + 'px'
+    if (drawing.naturalWidth) copy.style.width = drawing.naturalWidth + 'px'
     var layer = el('div', { class: 'lightbox', role: 'dialog', 'aria-label': t('openFull') }, copy)
     function close() {
       layer.remove()
@@ -829,11 +872,19 @@
     needMermaid().then(function (mermaid) {
       return mermaid.render('mermaid-' + Math.random().toString(36).slice(2), source)
     }).then(function (result) {
-      var svg = window.DOMPurify.sanitize(result.svg, { USE_PROFILES: { svg: true, svgFilters: true }, ADD_TAGS: ['style'], FORCE_BODY: true })
-      block.innerHTML = svg
+      var picture = el('img', { alt: source, src: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(result.svg) })
+      block.replaceChildren(picture)
       block.title = t('openFull')
-      block.addEventListener('click', function () { openFullSize(block.querySelector('svg')) })
+      block.addEventListener('click', function () { openFullSize(picture) })
     }).catch(function () {})
+  }
+
+  // A picture from anywhere else is a link the person may open, never loaded by itself.
+  function remoteChip(src, alt) {
+    var href = safeHref(src)
+    var label = alt || src.replace(/^[a-z]+:\/\//i, '').split('/')[0] || src
+    if (!href) return el('span', { class: 'chip outside', title: src }, el('span', { class: 'chip-name' }, label))
+    return el('a', { class: 'chip', href: href, target: '_blank', rel: 'noopener noreferrer', title: src }, el('span', { class: 'chip-name' }, label))
   }
 
   function replaceOnce(node, replacement) {
@@ -853,9 +904,10 @@
       var href = a.getAttribute('href')
       if (/^(sandbox:|MEDIA:)/i.test(href) || href.startsWith(CACHE_DIR)) replaceOnce(a, fileNode(cacheTarget(href), a.textContent, seen))
     })
-    root.querySelectorAll('img[src]').forEach(function (img) {
-      var src = img.getAttribute('src')
+    root.querySelectorAll('img[data-src]').forEach(function (img) {
+      var src = img.getAttribute('data-src')
       if (/^(sandbox:|MEDIA:)/i.test(src) || src.startsWith(CACHE_DIR)) replaceOnce(img, fileNode(cacheTarget(src), img.alt, seen))
+      else img.replaceWith(remoteChip(src, img.alt))
     })
     root.querySelectorAll('table').forEach(function (table) {
       table.replaceWith(el('div', { class: 'table-wrap' }, table.cloneNode(true)))
@@ -874,7 +926,7 @@
     if (!libs.ready) return renderBasic(text)
     var math = []
     var html = window.marked.parse(extractMath(String(text), math), { gfm: true, breaks: true })
-    var root = window.DOMPurify.sanitize(html, { ALLOWED_URI_REGEXP: LINK_PATTERN, RETURN_DOM_FRAGMENT: true })
+    var root = window.DOMPurify.sanitize(html, Object.assign({}, PURIFY, { ALLOWED_URI_REGEXP: LINK_PATTERN }))
     enhance(root, math, final)
     return root
   }
