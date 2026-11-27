@@ -74,7 +74,10 @@
   var KEYWORD_SIZES = ['auto', 'min-content', 'max-content']
   var MIN_PX = 48
   var MIN_PERCENT = 5
-  var CLOSED_SEGMENTS = ['admin', 'oauth2', 'api']
+  var MAX_PX = 4000
+  var MIN_FR = 0.1
+  var MAX_FR = 100
+  var CLOSED_SEGMENTS = ['admin', 'oauth2', 'api', 'graphql']
   var CHAT_FRAME = 'chat'
   var CHAT_PAGE = '/webchat/chat'
   var SESSION_ID = /^[A-Za-z0-9_-]{1,128}$/
@@ -119,7 +122,7 @@
     if (url.origin !== location.origin) return null
     var first = url.pathname.split('/')[1] || ''
     if (first.charAt(0) === '_' || CLOSED_SEGMENTS.indexOf(first.toLowerCase()) >= 0) return null
-    return url.pathname + url.search + url.hash
+    return url.pathname + url.hash
   }
 
   function validSize(size) {
@@ -128,9 +131,9 @@
     var m = SIZE.exec(size)
     if (!m) return false
     var n = Number(m[1])
-    if (m[2] === 'px') return n >= MIN_PX
+    if (m[2] === 'px') return n >= MIN_PX && n <= MAX_PX
     if (m[2] === '%') return n >= MIN_PERCENT && n <= 100
-    return n > 0
+    return n >= MIN_FR && n <= MAX_FR
   }
 
   function unsupported(what) {
@@ -309,7 +312,8 @@
         var next = measured.slice()
         next[index] = first
         next[index + 1] = pair - first
-        return next.map(function (px) { return Math.max(1, Math.round(px)) + 'fr' })
+        var total = next.reduce(function (sum, px) { return sum + px }, 0) || 1
+        return next.map(function (px) { return Math.min(MAX_FR, Math.max(MIN_FR, Math.round(px / total * 1000) / 10)) + 'fr' })
       }
       var latest = null
       function move(ev) {

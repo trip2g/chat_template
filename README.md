@@ -35,7 +35,7 @@ rows or in tabs. The layout is the note's `view:` frontmatter, a tree of nodes:
 | Node | Fields |
 |---|---|
 | `split` | `direction` (`row` or `column`), `items`, `sizes` (CSS grid: `240px`, `1fr`, `30%`), `resizable: true` for drag handles, `name` |
-| `frame` | `name`, `src`: a path on this site whose first segment does not start with `_` and is not `admin`, `oauth2` or `api`, with no `%` in it (a query and a hash are kept) |
+| `frame` | `name`, `src`: a path on this site whose first segment does not start with `_` and is not `admin`, `oauth2`, `api` or `graphql`, with no `%` in it; a query is dropped, a hash is kept |
 | `tabs` | `items`: frames with a `title` |
 | `message` | `text` |
 | `responsive` | `branches`: `{ min, layout }`; `min` is `mobile` (0), `tablet` (768), `desktop` (1200) or a number of pixels; the widest branch that fits wins, again on every resize |
@@ -67,7 +67,7 @@ view:
 ```
 
 - Each iframe's `name` is the frame's name. Every frame is sandboxed (`allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation-by-user-activation`: no downloads, the whole page navigated only on a click). A sandboxed frame may not navigate a sibling, so `<a href="/webchat/chat#session=abc" target="chat">` in another frame opens a new tab; the chat list asks the outer page to open the chat in the `chat` frame instead.
-- Sizes: `px` at least 48, `%` at least 5, `fr` above 0; anything else is `1fr`.
+- Sizes: `px` from 48 to 4000, `%` at least 5, `fr` from 0.1 to 100; anything else is `1fr`.
 - At most 8 frames on screen at once.
 - The chat opens `#session=<id>`, or the latest chat when the address names none, and follows `hashchange`.
 - A dragged size is kept in the browser per page and split `name`, until the name or the number of items changes.

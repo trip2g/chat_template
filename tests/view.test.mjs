@@ -252,8 +252,8 @@ test('the frames answer a view-state request with their names and paths only', a
 
 test('a dragged size is restored for the same split name and item count', async () => {
   const key = 'view_sizes:/projects/site:main'
-  const { document } = await mount(BOARD_AND_CHAT, { storage: { [key]: JSON.stringify({ count: 2, sizes: ['700fr', '300fr'] }) } })
-  assert.equal(document.querySelector('.split').style.gridTemplateColumns, '700fr 6px 300fr')
+  const { document } = await mount(BOARD_AND_CHAT, { storage: { [key]: JSON.stringify({ count: 2, sizes: ['70fr', '30fr'] }) } })
+  assert.equal(document.querySelector('.split').style.gridTemplateColumns, '70fr 6px 30fr')
 })
 
 test('a dragged size is dropped when the item count changed', async () => {
@@ -274,6 +274,8 @@ test('a page without view: says so', async () => {
 })
 
 const DOOR_PATHS = [
+  '/graphql',
+  '/GraphQL/',
   '/_system/webchatproxy/api/files/x',
   '/_system/webchatproxy/oauth2/sign_out',
   '/_system/desktop/',
@@ -303,13 +305,13 @@ for (const src of DOOR_PATHS) {
   })
 }
 
-test('the chat parts and a query or hash stay allowed', async () => {
+test('the chat parts and a hash stay allowed, a query is dropped', async () => {
   const { document } = await mount({ type: 'split', items: [
     { type: 'frame', name: 'sessions', src: '/webchat/sessions' },
     { type: 'frame', name: 'chat', src: '/webchat/chat#session=abc' },
     { type: 'frame', name: 'files', src: '/webchat/files?x=1' },
   ] })
-  assert.deepEqual(frames(document).map((f) => f.src), ['/webchat/sessions', '/webchat/chat#session=abc', '/webchat/files?x=1'])
+  assert.deepEqual(frames(document).map((f) => f.src), ['/webchat/sessions', '/webchat/chat#session=abc', '/webchat/files'])
 })
 
 test('every frame is sandboxed without downloads or free top navigation', async () => {
@@ -381,3 +383,21 @@ test('the sessions frame may open a chat in the chat frame, and nothing else', a
   post(window, { type: 'webchat-open-session', id: 'evil' }, { origin: 'https://attacker.example', from: sessions })
   assert.equal(document.querySelector('iframe[name="chat"]').getAttribute('src'), '/webchat/chat#session=abc_1')
 })
+
+for (const src of ['/?tg_auth_token=attacker', '/notes/x?hat=attacker#top', '/notes/x?tg_auth_token=a&hat=b']) {
+  test(`a sign-in token in ${src} never reaches the frame`, async () => {
+    const { window, document } = await mount({ type: 'split', items: [{ type: 'frame', name: 'board', src }, { type: 'frame', name: 'chat', src: '/webchat/chat' }] })
+    const got = document.querySelector('iframe[name="board"]').getAttribute('src')
+    assert.doesNotMatch(got, /tg_auth_token|hat=|\?/)
+    post(window, { type: 'webchat-view', view: JSON.stringify({ type: 'open', target: 'board', src }) }, { from: chatWindow(document) })
+    assert.doesNotMatch(document.querySelector('iframe[name="board"]').getAttribute('src'), /tg_auth_token|hat=|\?/)
+  })
+}
+
+for (const [sizes, want] of [[['0.05fr', '1fr'], '1fr 6px 1fr'], [['101fr', '1fr'], '1fr 6px 1fr'], [['0.1fr', '100fr'], '0.1fr 6px 100fr'], [['4001px', '420px'], '1fr 6px 420px'], [['4000px', '420px'], '4000px 6px 420px']]) {
+  test(`bounded sizes ${sizes.join(' ')} draw as ${want}`, async () => {
+    const view = { type: 'split', resizable: true, sizes, items: [{ type: 'frame', name: 'board', src: '/b' }, { type: 'frame', name: 'chat', src: '/webchat/chat' }] }
+    const { document } = await mount(view)
+    assert.equal(document.querySelector('.split').style.gridTemplateColumns, want)
+  })
+}
