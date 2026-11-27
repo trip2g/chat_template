@@ -43,7 +43,11 @@ function page(view) {
     .replace('{{ json(note.M().Get("view")) }}', JSON.stringify(view === undefined ? null : view).replace(/</g, '\\u003c'))
 }
 
-async function mount(view, { width = 1400, storage } = {}) {
+function chatWindow(document) {
+  return document.querySelector('iframe[name="chat"]').contentWindow
+}
+
+async function mount(view, { width = 1400, storage, onError } = {}) {
   const requested = []
   const loader = new (class extends ResourceLoader {
     fetch(url) {
@@ -55,7 +59,7 @@ async function mount(view, { width = 1400, storage } = {}) {
     url: ORIGIN + '/projects/site',
     runScripts: 'dangerously',
     resources: loader,
-    virtualConsole: new VirtualConsole(),
+    virtualConsole: (() => { const c = new VirtualConsole(); if (onError) c.on('jsdomError', (e) => onError(String(e.message))); return c })(),
     pretendToBeVisual: true,
     beforeParse(window) {
       Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: width })
@@ -71,7 +75,8 @@ function frames(document) {
 }
 
 function post(window, data, { origin = ORIGIN, from } = {}) {
-  const source = from === undefined ? window.document.querySelector('#view-root iframe').contentWindow : from
+  const chat = window.document.querySelector('#view-root iframe[name="chat"]')
+  const source = from === undefined ? (chat || window.document.querySelector('#view-root iframe')).contentWindow : from
   const event = new window.Event('message')
   Object.assign(event, { data, origin, source })
   window.dispatchEvent(event)
@@ -266,4 +271,113 @@ test('a stored size that is not a size is ignored', async () => {
 test('a page without view: says so', async () => {
   const { document } = await mount(undefined)
   assert.match(document.querySelector('.message').textContent, /нет раскладки/)
+})
+
+const DOOR_PATHS = [
+  '/_system/webchatproxy/api/files/x',
+  '/_system/webchatproxy/oauth2/sign_out',
+  '/_system/desktop/',
+  '/a/%2e%2e/_system/desktop/',
+  '/a/../_system/desktop/',
+  '/webchat/%2e%2e/admin',
+  '/admin',
+  '/admin/notes',
+  '/api/graphql',
+  '/oauth2/start',
+  '/_layouts/view.html',
+  '/_webchat/README',
+  '/a%2fb',
+]
+
+for (const src of DOOR_PATHS) {
+  test(`a frame src of ${src} is refused`, async () => {
+    const { document, requested } = await mount({ type: 'split', items: [{ type: 'frame', name: 'x', src }, { type: 'frame', name: 'chat', src: '/webchat/chat' }] })
+    assert.deepEqual(frames(document), [{ name: 'chat', src: '/webchat/chat' }])
+    assert.equal(requested.filter((u) => String(u).includes('_system') || String(u).includes('admin')).length, 0)
+  })
+  test(`open into a frame with ${src} is refused`, async () => {
+    const { window, document } = await mount(BOARD_AND_CHAT)
+    post(window, { type: 'webchat-view', view: JSON.stringify({ type: 'open', target: 'board', src }) }, { from: chatWindow(document) })
+    assert.match(banner(document), /не на этом сайте/)
+    assert.equal(document.querySelector('iframe[name="board"]').getAttribute('src'), '/projects/site/board')
+  })
+}
+
+test('the chat parts and a query or hash stay allowed', async () => {
+  const { document } = await mount({ type: 'split', items: [
+    { type: 'frame', name: 'sessions', src: '/webchat/sessions' },
+    { type: 'frame', name: 'chat', src: '/webchat/chat#session=abc' },
+    { type: 'frame', name: 'files', src: '/webchat/files?x=1' },
+  ] })
+  assert.deepEqual(frames(document).map((f) => f.src), ['/webchat/sessions', '/webchat/chat#session=abc', '/webchat/files?x=1'])
+})
+
+test('every frame is sandboxed without downloads or free top navigation', async () => {
+  const { document } = await mount(BOARD_AND_CHAT)
+  for (const iframe of document.querySelectorAll('iframe')) {
+    const tokens = iframe.getAttribute('sandbox').split(/\s+/).sort()
+    assert.deepEqual(tokens, ['allow-forms', 'allow-popups', 'allow-same-origin', 'allow-scripts', 'allow-top-navigation-by-user-activation'])
+  }
+})
+
+for (const [sizes, want] of [[['0px', '420px'], '1fr 6px 420px'], [['10px', '420px'], '1fr 6px 420px'], [['1%', '99%'], '1fr 6px 99%'], [['0fr', '1fr'], '1fr 6px 1fr'], [['48px', '5%'], '48px 6px 5%']]) {
+  test(`sizes ${sizes.join(' ')} draw as ${want}`, async () => {
+    const view = { type: 'split', resizable: true, sizes, items: [{ type: 'frame', name: 'board', src: '/b' }, { type: 'frame', name: 'chat', src: '/webchat/chat' }] }
+    const { document } = await mount(view)
+    assert.equal(document.querySelector('.split').style.gridTemplateColumns, want)
+  })
+}
+
+test('a command from a frame other than the chat is ignored', async () => {
+  const { window, document } = await mount(BOARD_AND_CHAT)
+  const board = document.querySelector('iframe[name="board"]').contentWindow
+  post(window, { type: 'webchat-view', view: '{"type":"message","text":"owned"}' }, { from: board })
+  assert.equal(frames(document).length, 2)
+  const answers = []
+  board.postMessage = (data) => answers.push(data)
+  post(window, { type: 'webchat-view-state-request', id: 'r' }, { from: board })
+  assert.equal(answers.length, 0)
+})
+
+test('a tree with more than eight frames on screen is refused', async () => {
+  const items = Array.from({ length: 9 }, (_, i) => ({ type: 'frame', name: 'f' + i, src: '/p' + i }))
+  const { document } = await mount({ type: 'split', items: [{ type: 'split', items: items.slice(0, 5) }, { type: 'split', items: items.slice(5) }] })
+  assert.match(banner(document), /слишком много/)
+  assert.equal(frames(document).length, 0)
+})
+
+test('a frame that wandered to a path with capitals or % is left out of the view state', async () => {
+  const { window, document } = await mount({ type: 'split', items: [
+    { type: 'frame', name: 'board', src: '/Projects/Site' },
+    { type: 'frame', name: 'chat', src: '/webchat/chat' },
+  ] })
+  const chat = chatWindow(document)
+  const answers = []
+  chat.postMessage = (data) => answers.push(data)
+  post(window, { type: 'webchat-view-state-request', id: 'r' }, { from: chat })
+  assert.deepEqual(JSON.parse(JSON.stringify(answers[0].frames)), [{ name: 'chat', path: '/webchat/chat' }])
+})
+
+test('a frame asking to sign in sends the whole page to the door', async () => {
+  const errors = []
+  const { window, document } = await mount(BOARD_AND_CHAT, { onError: (e) => errors.push(e) })
+  post(window, { type: 'webchat-sign-in' }, { from: document.querySelector('iframe[name="board"]').contentWindow })
+  assert.ok(errors.some((e) => /navigation/i.test(e)), errors.join('|'))
+})
+
+test('the sessions frame may open a chat in the chat frame, and nothing else', async () => {
+  const view = { type: 'split', items: [
+    { type: 'frame', name: 'sessions', src: '/webchat/sessions' },
+    { type: 'frame', name: 'chat', src: '/webchat/chat' },
+  ] }
+  const { window, document } = await mount(view)
+  const sessions = document.querySelector('iframe[name="sessions"]').contentWindow
+  post(window, { type: 'webchat-open-session', id: 'abc_1' }, { from: sessions })
+  assert.equal(document.querySelector('iframe[name="chat"]').getAttribute('src'), '/webchat/chat#session=abc_1')
+  for (const id of ['../x', 'a b', 'x#y', '', 'a'.repeat(129), 42]) {
+    post(window, { type: 'webchat-open-session', id }, { from: sessions })
+    assert.equal(document.querySelector('iframe[name="chat"]').getAttribute('src'), '/webchat/chat#session=abc_1')
+  }
+  post(window, { type: 'webchat-open-session', id: 'evil' }, { origin: 'https://attacker.example', from: sessions })
+  assert.equal(document.querySelector('iframe[name="chat"]').getAttribute('src'), '/webchat/chat#session=abc_1')
 })

@@ -85,7 +85,11 @@ An evicted file is "no longer available".
 `message` and `responsive` nodes (see the template's README for every field and an
 example). `webchat/sessions.md`, `webchat/chat.md` and `webchat/files.md` are the
 three parts of the chat as pages of their own, to put into frames. A frame's
-`src` must be a path on this site; the iframe's `name` is the frame's name.
+`src` must be a path on this site, not under a `_` folder, `admin`, `oauth2` or
+`api`, with no `%`; the iframe's `name` is the frame's name. Frames are
+sandboxed, so a link in one frame cannot open a page in another: use a
+```` ```view ```` open command for that. Only the frame named `chat` may change
+the layout.
 
 To change what the person sees, end an answer with
 

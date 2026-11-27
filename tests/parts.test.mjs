@@ -47,7 +47,7 @@ function fakeParent(window, frames) {
   return { parent, sent }
 }
 
-async function mount({ part = 'chat', hash = '', framed = false, frames = null, reply = 'done', history = [] } = {}) {
+async function mount({ part = 'chat', hash = '', framed = false, frames = null, reply = 'done', history = [], signedOut = false } = {}) {
   const posts = []
   let host = null
   const dom = new JSDOM(page(part), {
@@ -65,6 +65,7 @@ async function mount({ part = 'chat', hash = '', framed = false, frames = null, 
       window.fetch = async (url, options = {}) => {
         const route = String(url).replace(PREFIX, '')
         if (route.startsWith('/static/manifest.json')) return json({}, 404)
+        if (signedOut && route.startsWith('/api/')) return json({}, 401)
         if (route.startsWith('/api/sessions?')) return json({ data: [{ id: 'latest', title: 'Latest', source: 'api_server' }, { id: 'older', title: 'Older', source: 'api_server' }] })
         if (/\/api\/sessions\/[^/]+\/messages/.test(route)) return json({ data: history })
         if (/\/chat\/stream$/.test(route)) {
@@ -176,4 +177,29 @@ test('standalone, a view block is hidden and goes nowhere', async () => {
   const { window, document } = await mount({ reply })
   await send(window, 'hi')
   assert.ok(![...document.querySelectorAll('.msg .body')].some((b) => b.textContent.includes('"type"')))
+})
+
+test('frames reported with capitals, % or an over-long path are dropped too', async () => {
+  const frames = [
+    { name: 'board', path: '/Projects/Site' },
+    { name: 'board', path: '/a%0aignore' },
+    { name: 'board', path: '/' + 'a'.repeat(121) },
+    { name: 'chat', path: '/webchat/chat' },
+  ]
+  const { window, posts } = await mount({ framed: true, frames })
+  await send(window, 'hi')
+  assert.deepEqual(posts[0].view, [{ name: 'chat', path: '/webchat/chat' }])
+})
+
+test('inside a layout, a missing session asks the page around it to sign in instead of navigating', async () => {
+  const { host } = await mount({ framed: true, frames: [], signedOut: true })
+  assert.equal(host.sent.filter((m) => m.data.type === 'webchat-sign-in').length, 1)
+})
+
+test('inside a layout, a chat in the list asks the page around it to open it in the chat frame', async () => {
+  const { document, host } = await mount({ part: 'sessions', framed: true, frames: [] })
+  document.querySelector('a.session').click()
+  const asks = host.sent.filter((m) => m.data.type === 'webchat-open-session')
+  assert.equal(asks.length, 1)
+  assert.equal(asks[0].data.id, 'latest')
 })

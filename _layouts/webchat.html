@@ -415,7 +415,7 @@
   var CHAT_PAGE = '/webchat/chat'
   var CHAT_FRAME = 'chat'
   var FRAME_NAME = /^[a-z][a-z0-9_-]{0,31}$/
-  var FRAME_PATH = /^\/[A-Za-z0-9._~%\/-]{0,199}$/
+  var FRAME_PATH = /^\/[a-z0-9._\/-]{1,120}$/
   var VIEW_BLOCK = /```view\b([\s\S]*?)(?:```|$)/g
   var VIEW_MAX_CHARS = 32768
   var VIEW_STATE_WAIT_MS = 300
@@ -1094,8 +1094,9 @@
     } catch (e) {
       return false
     }
-    var target = hostWindow() || window
-    target.location.replace(signInURL())
+    var host = hostWindow()
+    if (host) host.postMessage({ type: 'webchat-sign-in' }, location.origin)
+    else location.replace(signInURL())
     return true
   }
 
@@ -1165,7 +1166,7 @@
         var rename = el('button', { type: 'button', class: 'rename', 'aria-label': t('rename'), title: t('rename') })
         rename.addEventListener('click', function () { startRename(text, s.id) })
         var opener = PART === 'sessions'
-          ? el('a', { class: 'session', href: CHAT_PAGE + sessionHash(s.id), target: CHAT_FRAME })
+          ? el('a', { class: 'session', href: CHAT_PAGE + sessionHash(s.id), target: CHAT_FRAME, onclick: function (e) { openInChatFrame(e, s.id) } })
           : el('button', { class: 'session', onclick: function () { location.hash = sessionHash(s.id); setTab('chat') } })
         opener.append(el('span', { class: 'title' }, s.source === 'telegram' ? el('span', { class: 'src', title: 'Telegram' }) : null, text),
           el('span', { class: 'muted' }, formatTime(s.last_active || s.started_at)))
@@ -1179,6 +1180,13 @@
       list.replaceChildren(errorNode(err))
       return null
     })
+  }
+
+  function openInChatFrame(e, id) {
+    var host = hostWindow()
+    if (!host) return
+    e.preventDefault()
+    host.postMessage({ type: 'webchat-open-session', id: id }, location.origin)
   }
 
   function sessionHash(id) {
