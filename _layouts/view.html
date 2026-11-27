@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }}</title>
+
+<script type="application/json" id="view-default">{{ json(note.M().Get("view")) }}</script>
+
+<script>
+  try {
+    var dark = localStorage.getItem('$mol_lights') !== 'true'
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
+  } catch (e) {}
+  try {
+    var chosen = localStorage.getItem('webchat_lang')
+    if (chosen === 'ru' || chosen === 'en') document.documentElement.lang = chosen
+  } catch (e) {}
+</script>
+
+<style>
+  :root, [data-theme="light"] {
+    --bg: #f6f6f4; --panel: #ffffff; --line: #e2e2de; --text: #1d1d1b; --muted: #6b6b66;
+    --accent: #2f6f5e; --accent-text: #ffffff; --danger: #b3261e;
+  }
+  [data-theme="dark"] {
+    --bg: #161615; --panel: #1e1e1c; --line: #33332f; --text: #e8e8e3; --muted: #9a9a93;
+    --accent: #7cc4ae; --accent-text: #10201b; --danger: #f2b8b5;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  #view-root { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
+  #view-root > .node { flex: 1; min-height: 0; }
+  .node { min-width: 0; min-height: 0; }
+  .split { display: grid; height: 100%; width: 100%; }
+  .split > .node { overflow: hidden; }
+  .frame { width: 100%; height: 100%; border: 0; display: block; background: var(--panel); }
+  .handle { background: var(--line); touch-action: none; }
+  .split.row > .handle { cursor: col-resize; }
+  .split.column > .handle { cursor: row-resize; }
+  .handle:hover, .handle.active { background: var(--accent); }
+  .dragging iframe { pointer-events: none; }
+  .dragging { user-select: none; }
+  .tabs { display: flex; flex-direction: column; height: 100%; }
+  .tabs > .bar { display: flex; gap: 4px; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line);
+    background: var(--panel); order: 2; overflow-x: auto; }
+  .tabs > .bar button { flex: 1; border: 1px solid transparent; border-radius: 8px; background: none; padding: 8px 10px;
+    white-space: nowrap; }
+  .tabs > .bar button[aria-selected="true"] { background: var(--accent); color: var(--accent-text); }
+  .tabs > .panels { flex: 1; min-height: 0; position: relative; order: 1; }
+  .tabs > .panels > .node { position: absolute; inset: 0; }
+  .tabs > .panels > .node[hidden] { display: block; visibility: hidden; }
+  .message { display: flex; align-items: center; justify-content: center; height: 100%; padding: 16px;
+    color: var(--muted); text-align: center; background: var(--panel); white-space: pre-wrap; }
+  .banner { padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); color: var(--danger);
+    display: flex; gap: 8px; align-items: center; font-size: 13px; }
+  .banner span { flex: 1; overflow-wrap: anywhere; }
+  .banner button { border: 1px solid var(--line); border-radius: 6px; background: none; padding: 2px 8px; }
+</style>
+</head>
+<body>
+<div id="view-root"></div>
+
+<script>
+(function () {
+  'use strict'
+
+  var LIMITS = { bytes: 32768, depth: 8, nodes: 64, items: 8, branches: 6, text: 500, title: 40, src: 512 }
+  var PRESETS = { mobile: 0, tablet: 768, desktop: 1200 }
+  var NAME = /^[a-z][a-z0-9_-]{0,31}$/
+  var SIZE = /^(?:\d{1,5}(?:\.\d{1,3})?(?:px|fr|%)|auto|min-content|max-content)$/
+  var HANDLE_PX = 6
+  var MIN_TRACK_PX = 80
+  var STATE_PATH = /^\/[A-Za-z0-9._~%\/-]{0,199}$/
+
+  var TEXT = {
+    ru: { unsupported: 'не поддерживается', noView: 'У этой страницы нет раскладки (view в frontmatter).',
+      refused: 'Раскладка не применена: %s', noFrame: 'нет рамки «%s»', close: 'Закрыть',
+      tooBig: 'слишком большая', tooDeep: 'слишком глубокая', tooMany: 'слишком много частей', notJSON: 'это не JSON',
+      badSrc: 'адрес не на этом сайте' },
+    en: { unsupported: 'not supported', noView: 'This page has no layout (view in the frontmatter).',
+      refused: 'Layout not applied: %s', noFrame: 'no frame "%s"', close: 'Close',
+      tooBig: 'too large', tooDeep: 'too deep', tooMany: 'too many parts', notJSON: 'not JSON',
+      badSrc: 'the address is not on this site' },
+  }
+
+  function t(key, arg) {
+    var lang = document.documentElement.lang === 'en' ? 'en' : 'ru'
+    return TEXT[lang][key].replace('%s', arg === undefined ? '' : String(arg))
+  }
+
+  function Refusal(reason) {
+    this.reason = reason
+  }
+
+  function plainObject(v) {
+    return v !== null && typeof v === 'object' && !Array.isArray(v)
+  }
+
+  function sitePath(src) {
+    if (typeof src !== 'string' || src.length === 0 || src.length > LIMITS.src) return null
+    if (src.charAt(0) !== '/' || src.charAt(1) === '/' || src.charAt(1) === '\\') return null
+    if (/[\u0000-\u001f\u007f\\\s]/.test(src)) return null
+    var url
+    try { url = new URL(src, location.origin) } catch (e) { return null }
+    if (url.origin !== location.origin) return null
+    return url.pathname + url.search + url.hash
+  }
+
+  function unsupported(what) {
+    return { type: 'message', text: t('unsupported') + (what ? ': ' + what : '') }
+  }
+
+  function checkFrame(node, names, withTitle) {
+    if (typeof node.name !== 'string' || !NAME.test(node.name)) return unsupported('frame name')
+    if (names[node.name]) return unsupported('frame ' + node.name)
+    var src = sitePath(node.src)
+    if (!src) return unsupported(t('badSrc'))
+    names[node.name] = true
+    var frame = { type: 'frame', name: node.name, src: src }
+    if (withTitle) frame.title = typeof node.title === 'string' && node.title ? node.title.slice(0, LIMITS.title) : node.name
+    return frame
+  }
+
+  function checkNode(node, depth, budget, names) {
+    budget.nodes += 1
+    if (budget.nodes > LIMITS.nodes) throw new Refusal(t('tooMany'))
+    if (depth > LIMITS.depth) throw new Refusal(t('tooDeep'))
+    if (!plainObject(node)) return unsupported()
+    if (node.type === 'frame') return checkFrame(node, names, false)
+    if (node.type === 'message') return { type: 'message', text: typeof node.text === 'string' ? node.text.slice(0, LIMITS.text) : '' }
+    if (node.type === 'split') return checkSplit(node, depth, budget, names)
+    if (node.type === 'tabs') return checkTabs(node, depth, budget, names)
+    if (node.type === 'responsive') return checkResponsive(node, depth, budget, names)
+    return unsupported(typeof node.type === 'string' ? node.type.slice(0, 32) : '')
+  }
+
+  function checkItems(items, depth, budget) {
+    if (!Array.isArray(items) || items.length === 0) return null
+    if (items.length > LIMITS.items) throw new Refusal(t('tooMany'))
+    if (depth + 1 > LIMITS.depth) throw new Refusal(t('tooDeep'))
+    return items
+  }
+
+  function checkSplit(node, depth, budget, names) {
+    var items = checkItems(node.items, depth, budget)
+    if (!items) return unsupported('split')
+    var sizes = Array.isArray(node.sizes) ? node.sizes : []
+    var split = {
+      type: 'split',
+      direction: node.direction === 'column' ? 'column' : 'row',
+      resizable: node.resizable === true,
+      items: items.map(function (item) { return checkNode(item, depth + 1, budget, names) }),
+      sizes: items.map(function (item, i) { return typeof sizes[i] === 'string' && SIZE.test(sizes[i].trim()) ? sizes[i].trim() : '1fr' }),
+    }
+    if (typeof node.name === 'string' && NAME.test(node.name)) split.name = node.name
+    return split
+  }
+
+  function checkTabs(node, depth, budget, names) {
+    var items = checkItems(node.items, depth, budget)
+    if (!items) return unsupported('tabs')
+    return {
+      type: 'tabs',
+      items: items.map(function (item) {
+        budget.nodes += 1
+        if (budget.nodes > LIMITS.nodes) throw new Refusal(t('tooMany'))
+        if (!plainObject(item) || item.type !== 'frame') return { type: 'message', text: t('unsupported'), title: '?' }
+        return checkFrame(item, names, true)
+      }),
+    }
+  }
+
+  function presetWidth(min) {
+    if (typeof min === 'number' && isFinite(min) && min >= 0 && min <= 100000) return Math.floor(min)
+    if (typeof min === 'string' && Object.prototype.hasOwnProperty.call(PRESETS, min)) return PRESETS[min]
+    return null
+  }
+
+  function checkResponsive(node, depth, budget, names) {
+    if (!Array.isArray(node.branches) || node.branches.length === 0) return unsupported('responsive')
+    if (node.branches.length > LIMITS.branches) throw new Refusal(t('tooMany'))
+    var branches = []
+    node.branches.forEach(function (branch) {
+      if (!plainObject(branch)) return
+      var min = presetWidth(branch.min)
+      if (min === null) return
+      branches.push({ min: min, layout: checkNode(branch.layout, depth + 1, budget, Object.assign({}, names)) })
+    })
+    if (!branches.length) return unsupported('responsive')
+    branches.sort(function (a, b) { return b.min - a.min })
+    return { type: 'responsive', branches: branches }
+  }
+
+  function checkTree(raw) {
+    return checkNode(raw, 0, { nodes: 0 }, {})
+  }
+
+  function parseView(text) {
+    if (typeof text !== 'string') throw new Refusal(t('notJSON'))
+    if (text.length > LIMITS.bytes) throw new Refusal(t('tooBig'))
+    var depth = 0
+    var deepest = 0
+    for (var i = 0; i < text.length; i++) {
+      var c = text.charAt(i)
+      if (c === '{' || c === '[') { depth += 1; if (depth > deepest) deepest = depth }
+      else if (c === '}' || c === ']') depth -= 1
+    }
+    if (deepest > LIMITS.depth * 4 + 4) throw new Refusal(t('tooDeep'))
+    try { return JSON.parse(text) } catch (e) { throw new Refusal(t('notJSON')) }
+  }
+
+  var current = null
+  var activeTabs = {}
+  var shownBranch = []
+
+  function sizesKey(name) {
+    return 'view_sizes:' + location.pathname + ':' + name
+  }
+
+  function savedSizes(split) {
+    if (!split.name) return null
+    try {
+      var saved = JSON.parse(localStorage.getItem(sizesKey(split.name)) || 'null')
+      if (!plainObject(saved) || saved.count !== split.items.length || !Array.isArray(saved.sizes)) return null
+      if (saved.sizes.length !== split.items.length) return null
+      if (!saved.sizes.every(function (s) { return typeof s === 'string' && SIZE.test(s) })) return null
+      return saved.sizes
+    } catch (e) {
+      return null
+    }
+  }
+
+  function saveSizes(split, sizes) {
+    if (!split.name) return
+    try { localStorage.setItem(sizesKey(split.name), JSON.stringify({ count: split.items.length, sizes: sizes })) } catch (e) {}
+  }
+
+  function template(sizes, resizable) {
+    if (!resizable) return sizes.join(' ')
+    return sizes.join(' ' + HANDLE_PX + 'px ')
+  }
+
+  function renderSplit(split, path) {
+    var box = document.createElement('div')
+    box.className = 'node split ' + split.direction
+    var sizes = savedSizes(split) || split.sizes.slice()
+    var prop = split.direction === 'row' ? 'gridTemplateColumns' : 'gridTemplateRows'
+    var other = split.direction === 'row' ? 'gridTemplateRows' : 'gridTemplateColumns'
+    box.style[prop] = template(sizes, split.resizable)
+    box.style[other] = '100%'
+    var cells = []
+    split.items.forEach(function (item, i) {
+      if (i > 0 && split.resizable) {
+        var handle = document.createElement('div')
+        handle.className = 'handle'
+        handle.setAttribute('role', 'separator')
+        handle.setAttribute('aria-orientation', split.direction === 'row' ? 'vertical' : 'horizontal')
+        startDrag(handle, i - 1, split, box, cells, prop, function (next) { sizes = next })
+        box.append(handle)
+      }
+      var cell = renderNode(item, path.concat(i))
+      cells.push(cell)
+      box.append(cell)
+    })
+    return box
+  }
+
+  function startDrag(handle, index, split, box, cells, prop, update) {
+    handle.addEventListener('pointerdown', function (e) {
+      e.preventDefault()
+      var row = split.direction === 'row'
+      var measured = cells.map(function (cell) { var r = cell.getBoundingClientRect(); return row ? r.width : r.height })
+      var start = row ? e.clientX : e.clientY
+      var pair = measured[index] + measured[index + 1]
+      var root = document.getElementById('view-root')
+      root.classList.add('dragging')
+      handle.classList.add('active')
+      try { handle.setPointerCapture(e.pointerId) } catch (err) {}
+      function sizesFor(delta) {
+        var first = Math.min(Math.max(measured[index] + delta, MIN_TRACK_PX), pair - MIN_TRACK_PX)
+        var next = measured.slice()
+        next[index] = first
+        next[index + 1] = pair - first
+        return next.map(function (px) { return Math.max(1, Math.round(px)) + 'fr' })
+      }
+      var latest = null
+      function move(ev) {
+        latest = sizesFor((row ? ev.clientX : ev.clientY) - start)
+        box.style[prop] = template(latest, true)
+      }
+      function end() {
+        root.classList.remove('dragging')
+        handle.classList.remove('active')
+        handle.removeEventListener('pointermove', move)
+        handle.removeEventListener('pointerup', end)
+        handle.removeEventListener('pointercancel', end)
+        if (latest) { update(latest); saveSizes(split, latest) }
+      }
+      handle.addEventListener('pointermove', move)
+      handle.addEventListener('pointerup', end)
+      handle.addEventListener('pointercancel', end)
+    })
+  }
+
+  function renderFrame(frame) {
+    var iframe = document.createElement('iframe')
+    iframe.className = 'node frame'
+    iframe.setAttribute('name', frame.name)
+    iframe.title = frame.title || frame.name
+    iframe.src = frame.src
+    return iframe
+  }
+
+  function renderMessage(node) {
+    var box = document.createElement('div')
+    box.className = 'node message'
+    box.textContent = node.text
+    return box
+  }
+
+  function tabsKey(path) {
+    return path.join('.')
+  }
+
+  function renderTabs(tabs, path) {
+    var box = document.createElement('div')
+    box.className = 'node tabs'
+    var bar = document.createElement('div')
+    bar.className = 'bar'
+    bar.setAttribute('role', 'tablist')
+    var panels = document.createElement('div')
+    panels.className = 'panels'
+    var key = tabsKey(path)
+    var active = activeTabs[key] < tabs.items.length ? activeTabs[key] : 0
+    var buttons = []
+    var nodes = []
+    function select(i) {
+      activeTabs[key] = i
+      buttons.forEach(function (b, j) { b.setAttribute('aria-selected', String(i === j)) })
+      nodes.forEach(function (n, j) { n.hidden = i !== j })
+    }
+    tabs.items.forEach(function (item, i) {
+      var button = document.createElement('button')
+      button.type = 'button'
+      button.setAttribute('role', 'tab')
+      button.textContent = item.title || item.name || '?'
+      button.addEventListener('click', function () { select(i) })
+      buttons.push(button)
+      bar.append(button)
+      var node = item.type === 'frame' ? renderFrame(item) : renderMessage(item)
+      node.dataset.tab = String(i)
+      nodes.push(node)
+      panels.append(node)
+    })
+    box.selectTab = select
+    box.dataset.tabs = key
+    box.append(panels, bar)
+    select(active)
+    return box
+  }
+
+  function chooseBranch(node) {
+    var width = window.innerWidth
+    for (var i = 0; i < node.branches.length; i++) if (width >= node.branches[i].min) return i
+    return node.branches.length - 1
+  }
+
+  function renderResponsive(node, path) {
+    var index = chooseBranch(node)
+    shownBranch.push({ node: node, index: index })
+    return renderNode(node.branches[index].layout, path.concat('b' + index))
+  }
+
+  function renderNode(node, path) {
+    if (node.type === 'frame') return renderFrame(node)
+    if (node.type === 'split') return renderSplit(node, path)
+    if (node.type === 'tabs') return renderTabs(node, path)
+    if (node.type === 'responsive') return renderResponsive(node, path)
+    return renderMessage(node)
+  }
+
+  function render() {
+    var root = document.getElementById('view-root')
+    shownBranch = []
+    var banner = root.querySelector('.banner')
+    root.replaceChildren()
+    if (banner) root.append(banner)
+    root.append(current ? renderNode(current, []) : renderMessage({ text: t('noView') }))
+  }
+
+  function showBanner(text) {
+    var root = document.getElementById('view-root')
+    var old = root.querySelector('.banner')
+    if (old) old.remove()
+    var banner = document.createElement('div')
+    banner.className = 'banner'
+    banner.setAttribute('role', 'status')
+    var span = document.createElement('span')
+    span.textContent = text
+    var close = document.createElement('button')
+    close.type = 'button'
+    close.textContent = t('close')
+    close.addEventListener('click', function () { banner.remove() })
+    banner.append(span, close)
+    root.prepend(banner)
+  }
+
+  function framesNamed(node, name, out) {
+    if (!node) return out
+    if (node.type === 'frame' && node.name === name) out.push(node)
+    if (node.items) node.items.forEach(function (item) { framesNamed(item, name, out) })
+    if (node.branches) node.branches.forEach(function (b) { framesNamed(b.layout, name, out) })
+    return out
+  }
+
+  function openIn(command) {
+    var name = typeof command.target === 'string' && NAME.test(command.target) ? command.target : null
+    var src = sitePath(command.src)
+    if (!name) throw new Refusal(t('noFrame', String(command.target).slice(0, 32)))
+    if (!src) throw new Refusal(t('badSrc'))
+    var nodes = framesNamed(current, name, [])
+    if (!nodes.length) throw new Refusal(t('noFrame', name))
+    nodes.forEach(function (n) { n.src = src })
+    var iframe = Array.prototype.find.call(document.querySelectorAll('#view-root iframe'), function (f) { return f.getAttribute('name') === name })
+    if (!iframe) return
+    iframe.src = src
+    var tab = iframe.dataset.tab
+    var tabs = iframe.closest('.tabs')
+    if (tab !== undefined && tabs && tabs.selectTab) tabs.selectTab(Number(tab))
+  }
+
+  function apply(raw) {
+    if (plainObject(raw) && raw.type === 'open') {
+      openIn(raw)
+      return
+    }
+    var checked = checkTree(raw)
+    if (checked.type === 'message' && !(plainObject(raw) && raw.type === 'message')) throw new Refusal(checked.text)
+    current = checked
+    render()
+  }
+
+  function applyText(text) {
+    try {
+      apply(parseView(text))
+    } catch (e) {
+      if (e instanceof Refusal) showBanner(t('refused', e.reason))
+      else showBanner(t('refused', t('unsupported')))
+    }
+  }
+
+  function ownFrame(source) {
+    if (!source) return null
+    return Array.prototype.find.call(document.querySelectorAll('#view-root iframe'), function (f) { return f.contentWindow === source }) || null
+  }
+
+  function openFrames() {
+    var out = []
+    document.querySelectorAll('#view-root iframe').forEach(function (f) {
+      var path = null
+      try { path = f.contentWindow.location.pathname } catch (e) {}
+      if (!path || path === 'blank') {
+        try { path = new URL(f.getAttribute('src'), location.origin).pathname } catch (e) {}
+      }
+      var name = f.getAttribute('name')
+      if (path && STATE_PATH.test(path) && path.indexOf('//') !== 0 && NAME.test(name)) out.push({ name: name, path: path })
+    })
+    return out
+  }
+
+  window.addEventListener('message', function (e) {
+    if (e.origin !== location.origin) return
+    if (!ownFrame(e.source)) return
+    var data = e.data
+    if (!plainObject(data)) return
+    if (data.type === 'webchat-view') applyText(data.view)
+    if (data.type === 'webchat-view-state-request') {
+      e.source.postMessage({ type: 'webchat-view-state', id: data.id, frames: openFrames() }, location.origin)
+    }
+  })
+
+  var resizeTimer = null
+  window.addEventListener('resize', function () {
+    clearTimeout(resizeTimer)
+    resizeTimer = setTimeout(function () {
+      var changed = shownBranch.some(function (s) { return chooseBranch(s.node) !== s.index })
+      if (changed) render()
+    }, 120)
+  })
+
+  try {
+    var initial = JSON.parse(document.getElementById('view-default').textContent || 'null')
+    if (initial === null) current = null
+    else current = checkTree(initial)
+    render()
+  } catch (e) {
+    current = null
+    render()
+    showBanner(t('refused', e instanceof Refusal ? e.reason : t('notJSON')))
+  }
+})()
+</script>
+</body>
+</html>

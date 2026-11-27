@@ -280,6 +280,20 @@
     .composer textarea { font-size: 16px; }
     .sessions-foot { padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
   }
+  .app[data-part="chat"] { grid-template-columns: 1fr; }
+  .app[data-part="chat"][data-files="open"] { grid-template-columns: 1fr 400px; }
+  .app[data-part="chat"] .sessions { display: none; }
+  .app[data-part="chat"] #open-sessions { display: none; }
+  .app[data-part="sessions"], .app[data-part="files"] { grid-template-columns: 1fr; }
+  .app[data-part="sessions"] .chat, .app[data-part="sessions"] .files,
+  .app[data-part="files"] .chat, .app[data-part="files"] .sessions { display: none !important; }
+  .app[data-part="files"] .files { display: flex !important; }
+  .app[data-part="sessions"] .sessions, .app[data-part="files"] .files {
+    position: static; transform: none; visibility: visible; width: auto; box-shadow: none; }
+  .app[data-part="sessions"] [data-close], .app[data-part="files"] [data-close-files] { display: none; }
+  .app[data-part="files"] .files > header, .app[data-part="chat"] .chat > header { padding-right: 12px; }
+  .app:not([data-part="all"]) .signin { position: static; }
+  a.session { color: inherit; text-decoration: none; }
   @media (max-width: 860px) and (prefers-reduced-motion: reduce) {
     .sessions, .files, .scrim { transition: none; }
   }
@@ -287,7 +301,7 @@
 </head>
 <body class="webchat">
 
-<div class="app" id="app" data-tab="chat" data-files="closed">
+<div class="app" id="app" data-tab="chat" data-files="closed" data-part="{{ note.M().GetString("webchat_part", "all") }}">
   <section class="pane sessions" id="sessions-pane">
     <header>
       <h2 data-i18n="chats">Chats</h2>
@@ -394,6 +408,17 @@
   // letters. Hidden from the list by id prefix and by source.
   var HIDDEN_SESSION_ID = /^(healthz|cron|letter)[-_]/
   var HIDDEN_SESSION_SOURCES = ['cron']
+
+  var PARTS = ['all', 'sessions', 'chat', 'files']
+  var PART = PARTS.indexOf($('app').dataset.part) >= 0 ? $('app').dataset.part : 'all'
+  $('app').dataset.part = PART
+  var CHAT_PAGE = '/webchat/chat'
+  var CHAT_FRAME = 'chat'
+  var FRAME_NAME = /^[a-z][a-z0-9_-]{0,31}$/
+  var FRAME_PATH = /^\/[A-Za-z0-9._~%\/-]{0,199}$/
+  var VIEW_BLOCK = /```view\b([\s\S]*?)(?:```|$)/g
+  var VIEW_MAX_CHARS = 32768
+  var VIEW_STATE_WAIT_MS = 300
 
   // ---------------------------------------------------------------------------
   // Language: Russian or English. The agent's language is the page's lang
@@ -922,7 +947,59 @@
     })
   }
 
+  function withoutViews(text) {
+    return String(text).replace(VIEW_BLOCK, '')
+  }
+
+  function viewsIn(text) {
+    var found = []
+    String(text).replace(VIEW_BLOCK, function (match, body) {
+      if (/```\s*$/.test(match) && body.length <= VIEW_MAX_CHARS) found.push(body.trim())
+      return ''
+    })
+    return found
+  }
+
+  function postViews(text) {
+    var host = hostWindow()
+    if (!host) return
+    viewsIn(text).forEach(function (view) {
+      host.postMessage({ type: 'webchat-view', view: view }, location.origin)
+    })
+  }
+
+  function cleanFrames(frames) {
+    if (!Array.isArray(frames)) return []
+    return frames.filter(function (f) {
+      return f && typeof f.name === 'string' && FRAME_NAME.test(f.name) && typeof f.path === 'string' &&
+        FRAME_PATH.test(f.path) && f.path.indexOf('//') !== 0 && f.path.split('/').indexOf('..') < 0
+    }).slice(0, 8).map(function (f) { return { name: f.name, path: f.path } })
+  }
+
+  function viewState() {
+    var host = hostWindow()
+    if (!host) return Promise.resolve(null)
+    return new Promise(function (resolve) {
+      var id = Date.now() + '-' + Math.random().toString(36).slice(2)
+      var timer = setTimeout(done, VIEW_STATE_WAIT_MS, null)
+      function done(frames) {
+        clearTimeout(timer)
+        window.removeEventListener('message', onMessage)
+        resolve(frames)
+      }
+      function onMessage(e) {
+        if (e.origin !== location.origin || e.source !== host) return
+        if (!e.data || e.data.type !== 'webchat-view-state' || e.data.id !== id) return
+        var frames = cleanFrames(e.data.frames)
+        done(frames.length ? frames : null)
+      }
+      window.addEventListener('message', onMessage)
+      host.postMessage({ type: 'webchat-view-state-request', id: id }, location.origin)
+    })
+  }
+
   function renderMarkdown(text, final) {
+    text = withoutViews(text)
     if (!libs.ready) return renderBasic(text)
     var math = []
     var html = window.marked.parse(extractMath(String(text), math), { gfm: true, breaks: true })
@@ -980,14 +1057,23 @@
 
   var state = { sessionId: null, sending: false, uploading: 0, titles: {}, sources: {}, attached: [], queue: [], abort: null }
 
+  function hostWindow() {
+    if (window.parent === window) return null
+    try {
+      if (window.parent.location.origin === location.origin) return window.parent
+    } catch (e) {}
+    return null
+  }
+
   function signInURL() {
-    return CHAT_API + '/oauth2/start?rd=' + encodeURIComponent(location.pathname)
+    var host = hostWindow()
+    return CHAT_API + '/oauth2/start?rd=' + encodeURIComponent((host || window).location.pathname)
   }
 
   // An error line; for a missing proxy session, a sign-in button with it.
   function errorNode(err) {
     var node = el('div', { class: 'error' }, err.message)
-    if (err.signIn) node.append(' ', el('a', { class: 'button primary', href: signInURL() }, t('signIn')))
+    if (err.signIn) node.append(' ', el('a', { class: 'button primary', href: signInURL(), target: hostWindow() ? '_top' : '_self' }, t('signIn')))
     return node
   }
 
@@ -1008,7 +1094,8 @@
     } catch (e) {
       return false
     }
-    location.replace(signInURL())
+    var target = hostWindow() || window
+    target.location.replace(signInURL())
     return true
   }
 
@@ -1077,20 +1164,31 @@
         var text = el('span', { class: 'text' }, label)
         var rename = el('button', { type: 'button', class: 'rename', 'aria-label': t('rename'), title: t('rename') })
         rename.addEventListener('click', function () { startRename(text, s.id) })
-        var row = el('div', { class: 'session-row' + (s.id === state.sessionId ? ' active' : '') },
-          el('button', {
-            class: 'session',
-            onclick: function () { location.hash = encodeURIComponent(s.id); setTab('chat') },
-          }, el('span', { class: 'title' }, s.source === 'telegram' ? el('span', { class: 'src', title: 'Telegram' }) : null, text),
-            el('span', { class: 'muted' }, formatTime(s.last_active || s.started_at))),
-          rename)
+        var opener = PART === 'sessions'
+          ? el('a', { class: 'session', href: CHAT_PAGE + sessionHash(s.id), target: CHAT_FRAME })
+          : el('button', { class: 'session', onclick: function () { location.hash = sessionHash(s.id); setTab('chat') } })
+        opener.append(el('span', { class: 'title' }, s.source === 'telegram' ? el('span', { class: 'src', title: 'Telegram' }) : null, text),
+          el('span', { class: 'muted' }, formatTime(s.last_active || s.started_at)))
+        var row = el('div', { class: 'session-row' + (s.id === state.sessionId ? ' active' : '') }, opener, rename)
         list.append(row)
       })
       updateChatNote()
+      return shown.length ? shown[0].id : null
     }).catch(function (err) {
-      if (err.signIn && autoSignIn()) return
+      if (err.signIn && autoSignIn()) return null
       list.replaceChildren(errorNode(err))
+      return null
     })
+  }
+
+  function sessionHash(id) {
+    return '#session=' + encodeURIComponent(id)
+  }
+
+  function hashSession() {
+    var raw = location.hash.slice(1)
+    if (raw.indexOf('session=') === 0) raw = raw.slice('session='.length)
+    try { return decodeURIComponent(raw) || null } catch (e) { return null }
   }
 
   function copyText(text) {
@@ -1124,7 +1222,7 @@
     body.append(renderMarkdown(text, final))
     var who = role === 'user' ? 'you' : 'agent'
     var node = el('div', { class: 'msg ' + role }, el('div', { class: 'role', 'data-i18n': who }, t(who)), body)
-    node.raw = text
+    node.raw = withoutViews(text)
     if (role === 'assistant') node.append(metaLine(node))
     return node
   }
@@ -1166,7 +1264,7 @@
       headers: { 'Content-Type': 'application/json' },
       body: '{}',
     }).then(function (body) {
-      location.hash = encodeURIComponent(body.session.id)
+      location.hash = sessionHash(body.session.id)
       setTab('chat')
       return loadSessions()
     }).catch(function (err) { showChatError(err) })
@@ -1317,7 +1415,7 @@
     scrollToEnd()
 
     var answer = ''
-    function redraw(final) { reply.raw = answer; body.replaceChildren(renderMarkdown(answer, final === true)); scrollToEnd() }
+    function redraw(final) { reply.raw = withoutViews(answer); body.replaceChildren(renderMarkdown(answer, final === true)); scrollToEnd() }
 
     // Event names are Hermes': assistant.delta, tool.started, assistant.completed,
     // run.completed, error, done. Anything else is ignored.
@@ -1330,18 +1428,21 @@
 
     var content = parts && parts.length ? [{ type: 'text', text: message }].concat(parts) : message
 
-    chatFetch('/api/sessions/' + encodeURIComponent(sid) + '/chat/stream', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-      body: JSON.stringify({ message: content }),
-      signal: controller.signal,
+    viewState().then(function (frames) {
+      var payload = frames ? { message: content, view: frames } : { message: content }
+      return chatFetch('/api/sessions/' + encodeURIComponent(sid) + '/chat/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      })
     }).then(function (res) {
       return readEvents(res, function (name, data) { if (handlers[name]) handlers[name](data) })
     }).catch(function (err) {
       if (err.name === 'AbortError') reply.append(el('div', { class: 'note' }, t('stopped')))
       else reply.append(errorNode(err))
     }).finally(function () {
-      if (answer) redraw(true)
+      if (answer) { redraw(true); postViews(answer) }
       showTools(false)
       state.sending = false
       state.abort = null
@@ -1633,9 +1734,25 @@
   }
 
   function openFromHash() {
-    state.sessionId = decodeURIComponent(location.hash.slice(1)) || null
-    loadMessages()
-    loadSessions()
+    state.sessionId = hashSession()
+    if (PART === 'sessions' || PART === 'files') {
+      if (PART === 'sessions') loadSessions()
+      else setFilesOpen(true)
+      return
+    }
+    if (state.sessionId) {
+      loadMessages()
+      loadSessions()
+      return
+    }
+    loadSessions().then(function (latest) {
+      if (latest && !state.sessionId) {
+        state.sessionId = latest
+        try { history.replaceState(null, '', sessionHash(latest)) } catch (e) {}
+        loadSessions()
+      }
+      loadMessages()
+    })
   }
 
   $('open-sessions').addEventListener('click', function () { setTab('sessions') })
