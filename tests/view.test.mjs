@@ -289,6 +289,16 @@ const DOOR_PATHS = [
   '/_layouts/view.html',
   '/_webchat/README',
   '/a%2fb',
+  '/.//evil.example/p',
+  '/.//agent.example.com/_system/selfservice/',
+  '/.//agent.example.com/graphql',
+  '/./_system/desktop/',
+  '/./graphql',
+  '/./admin',
+  '/a/..//evil.example/p',
+  '/.\\/evil.example/p',
+  '/./\\evil.example/p',
+  '/a/.\\.//evil.example/p',
 ]
 
 for (const src of DOOR_PATHS) {
@@ -304,6 +314,56 @@ for (const src of DOOR_PATHS) {
     assert.equal(document.querySelector('iframe[name="board"]').getAttribute('src'), '/projects/site/board')
   })
 }
+
+test('a normalized path that begins with // never reaches an iframe', async () => {
+  const { document, requested } = await mount({ type: 'split', items: [{ type: 'frame', name: 'x', src: '/.//evil.example/p' }, { type: 'frame', name: 'chat', src: '/webchat/chat' }] })
+  assert.deepEqual(frames(document), [{ name: 'chat', src: '/webchat/chat' }])
+  assert.equal(requested.filter((u) => String(u).includes('evil')).length, 0)
+})
+
+test('a dot segment in an allowed path is sent normalized', async () => {
+  const { document } = await mount({ type: 'split', items: [{ type: 'frame', name: 'x', src: '/a/./b/../c' }, { type: 'frame', name: 'chat', src: '/webchat/chat' }] })
+  assert.equal(document.querySelector('iframe[name="x"]').getAttribute('src'), '/a/c')
+})
+
+function wide(prefix, count) {
+  return { type: 'responsive', branches: [{ min: 0, layout: { type: 'split', items: Array.from({ length: count }, (_, i) => ({ type: 'frame', name: prefix + i, src: '/p/' + prefix + i })) } }] }
+}
+
+test('two responsive children of five frames each are refused as one tree', async () => {
+  const { document } = await mount({ type: 'split', items: [wide('a', 5), wide('b', 5)] })
+  assert.match(banner(document), /слишком много/)
+  assert.equal(frames(document).length, 0)
+})
+
+test('two responsive children of five frames each from the chat leave the layout as it was', async () => {
+  const { window, document } = await mount(BOARD_AND_CHAT)
+  post(window, { type: 'webchat-view', view: JSON.stringify({ type: 'split', items: [wide('a', 5), wide('b', 5)] }) })
+  assert.match(banner(document), /слишком много/)
+  assert.deepEqual(frames(document).map((f) => f.name), ['board', 'chat'])
+})
+
+test('the same frame name in two responsive children is refused', async () => {
+  const same = () => ({ type: 'responsive', branches: [{ min: 0, layout: { type: 'frame', name: 'x', src: '/p/x' } }] })
+  const { window, document } = await mount(BOARD_AND_CHAT)
+  post(window, { type: 'webchat-view', view: JSON.stringify({ type: 'split', items: [same(), same()] }) })
+  assert.match(banner(document), /не поддерживается/)
+  assert.deepEqual(frames(document).map((f) => f.name), ['board', 'chat'])
+})
+
+test('a breakpoint change that would select more than eight frames is refused', async () => {
+  const side = (prefix) => ({ type: 'responsive', branches: [
+    { min: 1200, layout: { type: 'split', items: Array.from({ length: 4 }, (_, i) => ({ type: 'frame', name: prefix + i, src: '/p/' + prefix + i })) } },
+    { min: 0, layout: { type: 'split', items: Array.from({ length: 5 }, (_, i) => ({ type: 'frame', name: prefix + i, src: '/p/' + prefix + i })) } },
+  ] })
+  const { window, document } = await mount({ type: 'split', items: [side('a'), side('b')] }, { width: 1400 })
+  assert.equal(frames(document).length, 8)
+  window.innerWidth = 390
+  window.dispatchEvent(new window.Event('resize'))
+  await new Promise((r) => setTimeout(r, 250))
+  assert.match(banner(document), /слишком много/)
+  assert.equal(frames(document).length, 8)
+})
 
 test('the chat parts and a hash stay allowed, a query is dropped', async () => {
   const { document } = await mount({ type: 'split', items: [

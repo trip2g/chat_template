@@ -120,6 +120,7 @@
     var url
     try { url = new URL(src, location.origin) } catch (e) { return null }
     if (url.origin !== location.origin) return null
+    if (url.pathname.indexOf('//') === 0 || url.pathname.indexOf('\\') >= 0) return null
     var first = url.pathname.split('/')[1] || ''
     if (first.charAt(0) === '_' || CLOSED_SEGMENTS.indexOf(first.toLowerCase()) >= 0) return null
     return url.pathname + url.hash
@@ -224,6 +225,24 @@
 
   function checkTree(raw) {
     return checkNode(raw, 0, { nodes: 0 }, {})
+  }
+
+  function selectedFrames(node, out) {
+    if (!node) return out
+    if (node.type === 'frame') out.push(node)
+    if (node.items) node.items.forEach(function (item) { selectedFrames(item, out) })
+    if (node.branches) selectedFrames(node.branches[chooseBranch(node)].layout, out)
+    return out
+  }
+
+  function checkSelected(tree) {
+    var names = {}
+    var list = selectedFrames(tree, [])
+    if (list.length > MAX_FRAMES) throw new Refusal(t('tooMany'))
+    list.forEach(function (frame) {
+      if (names[frame.name]) throw new Refusal(t('unsupported') + ': frame ' + frame.name)
+      names[frame.name] = true
+    })
   }
 
   function parseView(text) {
@@ -469,6 +488,7 @@
     }
     var checked = checkTree(raw)
     if (checked.type === 'message' && !(plainObject(raw) && raw.type === 'message')) throw new Refusal(checked.text)
+    checkSelected(checked)
     current = checked
     render()
   }
@@ -529,7 +549,13 @@
     clearTimeout(resizeTimer)
     resizeTimer = setTimeout(function () {
       var changed = shownBranch.some(function (s) { return chooseBranch(s.node) !== s.index })
-      if (changed) render()
+      if (!changed) return
+      try {
+        checkSelected(current)
+        render()
+      } catch (e) {
+        showBanner(t('refused', e instanceof Refusal ? e.reason : t('unsupported')))
+      }
     }, 120)
   })
 
@@ -537,6 +563,7 @@
     var initial = JSON.parse(document.getElementById('view-default').textContent || 'null')
     if (initial === null) current = null
     else current = checkTree(initial)
+    checkSelected(current)
     render()
   } catch (e) {
     current = null
