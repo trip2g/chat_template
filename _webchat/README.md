@@ -13,12 +13,15 @@ markup, styles and a plain script, no build step. Edit it in place and sync.
 | Part | Look for |
 |---|---|
 | Colours, light and dark | the `:root` blocks at the top of `<style>` |
-| Three columns, phone tabs | `.app` grid and the `@media (max-width: 860px)` block |
+| Three columns; on a phone the chat list and the files slide over the chat | `.app` grid and the `@media (max-width: 860px)` block |
+| Russian and English texts | `TEXT` in the script; static labels carry `data-i18n` |
+| The agent's language | the `lang` attribute of `<html>`; the RU/EN switch overrides it and is kept in this browser (`webchat_lang`) |
+| Chats hidden from the list | `HIDDEN_SESSION_ID`, `HIDDEN_SESSION_SOURCES` |
 | The chat API prefix | `WEBCHAT_API_PREFIX` in the first `<script>` |
 | Whether the visitor is the admin | `<script type="application/json" id="webchat-data">` |
 | Chat list, messages, sending | the section "Chat API" in the script |
 | Streaming reply | `readEvents` and the `handlers` table in `send` |
-| How a message is drawn | `renderMarkdown` / `renderInline` |
+| How a message is drawn (code, tables, links) | `renderMarkdown` / `renderInline` |
 | File list, search, paging | the section "Files" – `LIST_FILES`, `loadFiles` |
 | Preview by file type | `showPreview` |
 | The text a file adds to a message | `attachmentText` |
@@ -29,7 +32,7 @@ markup, styles and a plain script, no build step. Edit it in place and sync.
 - **Chat**: the Hermes Agent API server, reached on this same site under
   `WEBCHAT_API_PREFIX` (default `/_system/webchatproxy`) through an
   authenticating proxy. A 401 shows a "Sign in" button that opens
-  `<prefix>/oauth2/start?rd=<this page>`; 403, 502 and 503 show "try again".
+  `<prefix>/oauth2/start?rd=<this page>`; 403, 502 and 503 show "try again". Tool calls of a running reply collapse into one chip.
   Formats are Hermes' own: `GET /api/sessions`, `POST /api/sessions`,
   `GET /api/sessions/{id}/messages`, `POST /api/sessions/{id}/chat/stream`
   (server-sent events `assistant.delta`, `tool.started`,
