@@ -32,6 +32,10 @@ markup, styles and a plain script, no build step. Edit it in place and sync.
 | Chips for `@name`, `sandbox:` and `MEDIA:` in messages | `fileReference`, `cacheTarget`, `fileNode` |
 | Paperclip, drop and paste into the message box | the section "The message box" – `attachToComposer` |
 | Voice message | the same section – `startRecording`, `sendVoice`, `transcribe` |
+| Which part this page is (`webchat_part` in the note: `sessions`, `chat`, `files`; none is the whole page) | `PART`, and the `.app[data-part=…]` styles |
+| Which chat is open (`#session=<id>`, the latest when none) | `openFromHash`, `hashSession`, `sessionHash` |
+| A ```` ```view ```` block in an answer, hidden and handed to the outer page | `withoutViews`, `viewsIn`, `postViews` |
+| The open frames sent with a message | `viewState`, `cleanFrames` |
 
 ## How it talks to the server
 
@@ -75,11 +79,36 @@ folder of its own; the chip shows just `report.pdf`). The agent shows a file by 
 path outside `/opt/webchat-files` is a muted "file is on the agent's disk" chip.
 An evicted file is "no longer available".
 
+## Pages made of frames
+
+`_layouts/view.html` draws a note's `view:` frontmatter: `split`, `frame`, `tabs`,
+`message` and `responsive` nodes (see the template's README for every field and an
+example). `webchat/sessions.md`, `webchat/chat.md` and `webchat/files.md` are the
+three parts of the chat as pages of their own, to put into frames. A frame's
+`src` must be a path on this site, not under a `_` folder, `admin`, `oauth2`,
+`api` or `graphql`, with no `%` and no query; the iframe's `name` is the frame's name. Frames are
+sandboxed, so a link in one frame cannot open a page in another: use a
+```` ```view ```` open command for that. Only the frame named `chat` may change
+the layout.
+
+To change what the person sees, end an answer with
+
+````
+```view
+{"type":"open","target":"board","src":"/projects/other/board"}
+```
+````
+
+or with a whole tree in place of the `open` command. Each message tells you the
+frames that are open, as `name=path` pairs; read the titles from the notes at
+those paths, never from the page.
+
 ## Rules that keep the page working
 
 - **Jet parses the whole layout**, the script too. Never write two opening
   curly braces in a row, or an opening curly brace followed by a star,
-  anywhere in the file except the three Jet calls already there. The page
+  anywhere in the file except the Jet calls already there (four in
+  `webchat.html`, two in `view.html`). The page
   stops rendering otherwise. Use `{ a: 1 }` with spaces if you build objects.
 - **Never put text from a message, a file or a file name into `innerHTML`.**
   Use `el(...)` or `textContent`. The page runs with the visitor's session:
@@ -91,7 +120,7 @@ An evicted file is "no longer available".
 
 ## Reset
 
-Something broken? Put the original three files back – `_layouts/webchat.html`,
-`webchat.md` and this README – from wherever this template was installed from,
+Something broken? Put the original files back – `_layouts/webchat.html`,
+`_layouts/view.html`, `webchat.md`, `webchat/*.md` and this README – from wherever this template was installed from,
 and sync. Nothing else is touched; a changed `WEBCHAT_API_PREFIX` goes back to
 the default. Keep your own variants as `_layouts/webchat-<name>.html`.

@@ -24,10 +24,84 @@ file explorer over the site's own stored files.
 | `_layouts/webchat.html` | the whole page |
 | `webchat.md` | the page note, served at `/webchat` (`layout: webchat`) |
 | `_webchat/README.md` | notes for whoever edits the page: where each part lives, the rules that keep it working |
+| `webchat/sessions.md`, `webchat/chat.md`, `webchat/files.md` | the chat list, the chat and the files as pages of their own (`/webchat/sessions`, `/webchat/chat`, `/webchat/files`), for putting into frames |
+| `_layouts/view.html` | a page made of frames of other pages of the site, laid out from the note's `view:` |
+
+## A page made of frames
+
+A note with `layout: view` shows other pages of the same site side by side, in
+rows or in tabs. The layout is the note's `view:` frontmatter, a tree of nodes:
+
+| Node | Fields |
+|---|---|
+| `split` | `direction` (`row` or `column`), `items`, `sizes` (CSS grid: `240px`, `1fr`, `30%`), `resizable: true` for drag handles, `name` |
+| `frame` | `name`, `src`: a path on this site whose first segment does not start with `_` and is not `admin`, `oauth2`, `api` or `graphql`, with no `%` in it; a query is dropped, a hash is kept |
+| `tabs` | `items`: frames with a `title` |
+| `message` | `text` |
+| `responsive` | `branches`: `{ min, layout }`; `min` is `mobile` (0), `tablet` (768), `desktop` (1200) or a number of pixels; the widest branch that fits wins, again on every resize |
+
+```yaml
+---
+title: Site project
+layout: view
+view:
+  type: responsive
+  branches:
+    - min: desktop
+      layout:
+        type: split
+        name: main
+        direction: row
+        sizes: ["1fr", "420px"]
+        resizable: true
+        items:
+          - { type: frame, name: board, src: /projects/site/board }
+          - { type: frame, name: chat, src: /webchat/chat }
+    - min: mobile
+      layout:
+        type: tabs
+        items:
+          - { type: frame, name: board, title: Board, src: /projects/site/board }
+          - { type: frame, name: chat, title: Chat, src: /webchat/chat }
+---
+```
+
+- Each iframe's `name` is the frame's name. Every frame is sandboxed (`allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation-by-user-activation`: no downloads, the whole page navigated only on a click). A sandboxed frame may not navigate a sibling, so `<a href="/webchat/chat#session=abc" target="chat">` in another frame opens a new tab; the chat list asks the outer page to open the chat in the `chat` frame instead.
+- Sizes: `px` from 48 to 4000, `%` at least 5, `fr` from 0.1 to 100; anything else is `1fr`.
+- At most 8 frames on screen at once.
+- The chat opens `#session=<id>`, or the latest chat when the address names none, and follows `hashchange`.
+- A dragged size is kept in the browser per page and split `name`, until the name or the number of items changes.
+- An unknown node type, a `src` that is not a path on this site, a tree deeper than 8 levels, over 64 nodes or over 32 KB is refused with a visible "not supported".
+
+### The agent changes the layout
+
+An answer may carry a fenced block
+
+````
+```view
+{"type":"open","target":"board","src":"/projects/other/board"}
+```
+````
+
+The chat page hides it and, when the answer ends, hands it to the page around it
+(`postMessage`, this origin only; the outer page accepts it only from its frame
+named `chat`). A whole tree replaces the layout until the tab is reloaded;
+`{"type":"open","target":"<frame>","src":"/path"}` changes one frame and, in
+`tabs`, switches to it. The block is parsed as JSON and never run. Nothing is
+stored on the server: a reload brings back the note's `view:`.
+
+### The agent knows what is open
+
+On every message the chat asks the outer page which frames are open and at
+which paths, and sends them as `view: [{ "name": "board", "path": "/projects/site/board" }, …]`
+beside the message. A name outside `[a-z][a-z0-9_-]{0,31}` or a path outside
+`^/[a-z0-9._/-]{1,120}$` is dropped, so a frame that went somewhere unusual is
+simply not mentioned. A chat in a frame that needs to sign in asks the outer page,
+which goes to the sign-in door itself. A chat opened on its own sends no `view`.
 
 ## Install
 
-Copy the three files into your trip2g vault at the same paths and sync. Open
+Copy the files into your trip2g vault at the same paths and sync. Open
 `/webchat` signed in as the site admin. Copying them again resets the page.
 
 ## What it needs
@@ -116,7 +190,7 @@ attach) to the code. Two rules:
 
 - trip2g's template engine (Jet) parses the whole file, the script included.
   Never write two opening curly braces in a row, or an opening curly brace
-  followed by a star, outside the three template calls already there.
+  followed by a star, outside the template calls already there.
 - Never put text from a message or a file name into `innerHTML`. The page runs
   with the admin's session; use the `el(...)` helper or `textContent`.
 
@@ -124,10 +198,13 @@ attach) to the code. Two rules:
 
 `tests/page.test.mjs` loads the real layout in jsdom with a stubbed API and the
 libraries the proxy serves, and renders injection payloads (raw HTML, styles, forms,
-remote pictures, `..` in file paths). Run it with jsdom 24 and the library directory
-of the proxy:
+remote pictures, `..` in file paths). `tests/view.test.mjs` feeds the frame layout
+hostile trees (other sites, `javascript:`, depth bombs, huge JSON, unknown types,
+messages from other origins); `tests/parts.test.mjs` covers the three parts, the
+`#session=` address, the `view` block and the open frames sent with a message.
+Run them with jsdom 24 and the library directory of the proxy:
 
 ```sh
 LIBS_DIR=<webchatproxy>/internal/static/files NODE_PATH=<dir with jsdom@24>/node_modules \
-  node --test tests/page.test.mjs
+  node --test tests/*.test.mjs
 ```
